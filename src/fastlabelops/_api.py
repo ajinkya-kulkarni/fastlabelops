@@ -13,7 +13,11 @@ def relabel_sequential(
     offset: int = 0,
     in_place: bool = False,
 ) -> tuple[np.ndarray, int]:
-    """Relabel positive integer IDs sequentially in first-occurrence order."""
+    """Relabel positive integer IDs sequentially in first-occurrence order.
+
+    Background label 0 is preserved. New labels are ``offset + 1`` through
+    ``offset + n_instances``.
+    """
     if not isinstance(labels, np.ndarray):
         raise TypeError("labels must be a NumPy array")
     if labels.dtype not in _SUPPORTED:
@@ -42,7 +46,11 @@ def overlap_counts(
     *,
     include_background: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Count sparse label-pair overlaps between two integer instance masks."""
+    """Count sparse label-pair overlaps between two integer instance masks.
+
+    Pairs are returned in deterministic first-occurrence order. By default,
+    positions where either input label is 0 are ignored.
+    """
     if not isinstance(labels_a, np.ndarray) or not isinstance(labels_b, np.ndarray):
         raise TypeError("labels_a and labels_b must be NumPy arrays")
     if labels_a.dtype not in _SUPPORTED or labels_b.dtype not in _SUPPORTED:
@@ -56,7 +64,12 @@ def overlap_counts(
 
 
 def regionprops(labels: np.ndarray) -> dict[str, np.ndarray]:
-    """Compute label, area, bbox, centroid, and area_bbox for a 2D label mask."""
+    """Compute common properties for labels in a 2D integer instance mask.
+
+    Returns ``label``, ``area``, ``bbox``, ``centroid``, and ``area_bbox``.
+    Output rows are sorted by ascending label. Bounding boxes use
+    ``(min_row, min_col, max_row_exclusive, max_col_exclusive)``.
+    """
     if not isinstance(labels, np.ndarray):
         raise TypeError("labels must be a NumPy array")
     if labels.ndim != 2:

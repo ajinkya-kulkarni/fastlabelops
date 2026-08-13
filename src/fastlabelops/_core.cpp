@@ -19,12 +19,24 @@
 namespace {
 
 PyMethodDef methods[] = {
-    {"relabel_inplace", relabel_impl::py_relabel_inplace, METH_VARARGS,
-     "Relabel a writable contiguous uint array in place."},
-    {"overlap_counts", overlap_impl::py_overlap_counts, METH_VARARGS,
-     "Count observed sparse label-pair overlaps between two arrays."},
-    {"regionprops2d", props_impl::py_regionprops2d, METH_VARARGS,
-     "Compute common 2D label properties."},
+    {
+        "relabel_inplace",
+        relabel_impl::py_relabel_inplace,
+        METH_VARARGS,
+        "Relabel a writable contiguous uint array in place."
+    },
+    {
+        "overlap_counts",
+        overlap_impl::py_overlap_counts,
+        METH_VARARGS,
+        "Count observed sparse label-pair overlaps between two arrays."
+    },
+    {
+        "regionprops2d",
+        props_impl::py_regionprops2d,
+        METH_VARARGS,
+        "Compute common 2D label properties."
+    },
     {nullptr, nullptr, 0, nullptr},
 };
 

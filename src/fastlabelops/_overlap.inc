@@ -95,9 +95,15 @@ private:
 };
 
 template <typename LabelA, typename LabelB>
-void count_pairs(const LabelA* a, const LabelB* b, std::size_t n, bool include_background,
-                 std::vector<LabelA>& out_a, std::vector<LabelB>& out_b,
-                 std::vector<uint64_t>& out_counts) {
+void count_pairs(
+    const LabelA* a,
+    const LabelB* b,
+    std::size_t n,
+    bool include_background,
+    std::vector<LabelA>& out_a,
+    std::vector<LabelB>& out_b,
+    std::vector<uint64_t>& out_counts
+) {
     PairMap<LabelA, LabelB> map(n);
     const std::size_t reserve_n = std::min<std::size_t>(n, 16384);
     out_a.reserve(reserve_n);
@@ -127,8 +133,13 @@ void count_pairs(const LabelA* a, const LabelB* b, std::size_t n, bool include_b
 }
 
 template <typename LabelA, typename LabelB>
-PyObject* build_result(const std::vector<LabelA>& out_a, const std::vector<LabelB>& out_b,
-                       const std::vector<uint64_t>& out_counts, int typenum_a, int typenum_b) {
+PyObject* build_result(
+    const std::vector<LabelA>& out_a,
+    const std::vector<LabelB>& out_b,
+    const std::vector<uint64_t>& out_counts,
+    int typenum_a,
+    int typenum_b
+) {
     const npy_intp size = static_cast<npy_intp>(out_counts.size());
     npy_intp dims[1] = {size};
     PyObject* a_obj = PyArray_SimpleNew(1, dims, typenum_a);
@@ -162,9 +173,15 @@ PyObject* dispatch_typed(PyArrayObject* a, PyArrayObject* b, bool include_backgr
 
     Py_BEGIN_ALLOW_THREADS
     try {
-        count_pairs(reinterpret_cast<const LabelA*>(PyArray_DATA(a)),
-                    reinterpret_cast<const LabelB*>(PyArray_DATA(b)), n, include_background,
-                    out_a, out_b, counts);
+        count_pairs(
+            reinterpret_cast<const LabelA*>(PyArray_DATA(a)),
+            reinterpret_cast<const LabelB*>(PyArray_DATA(b)),
+            n,
+            include_background,
+            out_a,
+            out_b,
+            counts
+        );
     } catch (const std::bad_alloc&) {
         cpp_error = 1;
     } catch (...) {
