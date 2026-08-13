@@ -75,8 +75,7 @@ def bench_case(shape, n_instances, max_id, dtype=np.uint32, repeats=5):
     print(f"\n{'=' * 60}")
     dtype_name = dtype.__name__
     print(
-        f"Benchmark: shape={shape}, n_instances={n_instances}, "
-        f"max_id={max_id}, dtype={dtype_name}"
+        f"Benchmark: shape={shape}, n_instances={n_instances}, max_id={max_id}, dtype={dtype_name}"
     )
     print("=" * 60)
 
@@ -106,6 +105,7 @@ def bench_case(shape, n_instances, max_id, dtype=np.uint32, repeats=5):
     fm_result = None
     if fastremap is not None:
         print("  fastremap:")
+        assert fastremap is not None
         fm_result = timed(
             lambda a: fastremap.renumber(a, start=1, preserve_zero=True),
             mask,

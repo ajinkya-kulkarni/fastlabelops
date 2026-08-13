@@ -62,8 +62,7 @@ def main() -> None:
         name = f"{size}x{size}" + (" sparse IDs" if sparse else "")
         n = regionprops(labels)["label"].size
         print(
-            f"{name:<24} {n:>9,d} {fast * 1e3:>13.2f} ms "
-            f"{slow * 1e3:>9.2f} ms {slow / fast:>8.2f}x"
+            f"{name:<24} {n:>9,d} {fast * 1e3:>13.2f} ms {slow * 1e3:>9.2f} ms {slow / fast:>8.2f}x"
         )
 
 

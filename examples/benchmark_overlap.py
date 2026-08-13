@@ -13,13 +13,15 @@ from skimage.metrics import contingency_table  # type: ignore
 
 try:
     import stardist  # type: ignore
-    from stardist.matching import _label_overlap, relabel_sequential as sd_relabel  # type: ignore
+    from stardist.matching import _label_overlap  # type: ignore
+    from stardist.matching import relabel_sequential as sd_relabel  # type: ignore
 except ImportError:
     stardist = None  # type: ignore
     _label_overlap = None  # type: ignore
     sd_relabel = None  # type: ignore
 
-from fastlabelops import overlap_counts, relabel_sequential as fl_relabel
+from fastlabelops import overlap_counts
+from fastlabelops import relabel_sequential as fl_relabel
 
 rng = np.random.default_rng(42)
 
@@ -124,8 +126,7 @@ def check_equivalent(a, b):
         dense = stardist_raw(a, b)
         rows, cols = np.nonzero(dense)
         stardist_result = {
-            (int(row), int(col)): int(dense[row, col])
-            for row, col in zip(rows, cols, strict=True)
+            (int(row), int(col)): int(dense[row, col]) for row, col in zip(rows, cols, strict=True)
         }
         assert fast == stardist_result
 

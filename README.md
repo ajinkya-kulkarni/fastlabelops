@@ -162,9 +162,9 @@ the best of repeated runs.
 ```bash
 uv sync --dev
 uv run pytest
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy src/fastlabelops
+uv run ruff check src tests examples
+uv run ruff format --check src tests examples
+uv run mypy src tests examples
 uv run pre-commit install
 ```
 
