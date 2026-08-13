@@ -8,11 +8,11 @@ import time
 import numpy as np
 
 try:
-    import fastremap  # type: ignore
+    import fastremap
 except ImportError:
-    fastremap = None  # type: ignore
+    fastremap = None
 from numpy.random import default_rng
-from skimage.segmentation import relabel_sequential as sk_relabel  # type: ignore
+from skimage.segmentation import relabel_sequential as sk_relabel
 
 from fastlabelops import relabel_sequential as fr_relabel
 
@@ -105,9 +105,9 @@ def bench_case(shape, n_instances, max_id, dtype=np.uint32, repeats=5):
     fm_result = None
     if fastremap is not None:
         print("  fastremap:")
-        assert fastremap is not None
+        renumber = fastremap.renumber
         fm_result = timed(
-            lambda a: fastremap.renumber(a, start=1, preserve_zero=True),
+            lambda a: renumber(a, start=1, preserve_zero=True),
             mask,
             repeats=repeats,
         )

@@ -2,7 +2,7 @@ import gc
 import time
 
 import numpy as np
-from skimage.measure import regionprops as sk_regionprops  # type: ignore
+from skimage.measure import regionprops as sk_regionprops
 
 from fastlabelops import regionprops
 

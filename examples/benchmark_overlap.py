@@ -8,17 +8,17 @@ import time
 from collections.abc import Callable
 
 import numpy as np
-import skimage  # type: ignore
-from skimage.metrics import contingency_table  # type: ignore
+import skimage
+from skimage.metrics import contingency_table
 
 try:
-    import stardist  # type: ignore
-    from stardist.matching import _label_overlap  # type: ignore
-    from stardist.matching import relabel_sequential as sd_relabel  # type: ignore
+    import stardist
+    from stardist.matching import _label_overlap
+    from stardist.matching import relabel_sequential as sd_relabel
 except ImportError:
-    stardist = None  # type: ignore
-    _label_overlap = None  # type: ignore
-    sd_relabel = None  # type: ignore
+    stardist = None
+    _label_overlap = None
+    sd_relabel = None
 
 from fastlabelops import overlap_counts
 from fastlabelops import relabel_sequential as fl_relabel
