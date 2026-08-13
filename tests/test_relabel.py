@@ -20,6 +20,13 @@ def test_first_occurrence_order():
     assert n == 3
 
 
+@pytest.mark.parametrize("offset", [1.5, np.float64(2.5), True, np.bool_(False)])
+def test_offset_requires_integer(offset):
+    x = np.array([0, 7], dtype=np.uint32)
+    with pytest.raises(TypeError, match="offset must be an integer"):
+        relabel_sequential(x, offset=offset)
+
+
 def test_offset():
     x = np.array([0, 9, 9, 20], dtype=np.uint32)
     y, n = relabel_sequential(x, offset=100)

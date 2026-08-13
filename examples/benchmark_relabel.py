@@ -5,8 +5,12 @@ from __future__ import annotations
 import sys
 import time
 
-import fastremap  # type: ignore
 import numpy as np
+
+try:
+    import fastremap  # type: ignore
+except ImportError:
+    fastremap = None  # type: ignore
 from numpy.random import default_rng
 from skimage.segmentation import relabel_sequential as sk_relabel  # type: ignore
 
@@ -75,31 +79,52 @@ def bench_case(shape, n_instances, max_id, dtype=np.uint32, repeats=5):
         f"max_id={max_id}, dtype={dtype_name}"
     )
     print("=" * 60)
+
     print("Generating mask...")
     mask = make_mask(shape, n_instances, max_id, dtype=dtype)
     actual_instances = int(np.unique(mask[mask != 0]).size)
     print(f"  actual non-zero ids: {actual_instances}")
     print(f"  mask memory: {mask.nbytes / 1e6:.2f} MB")
+
     print("\nVerifying correctness...")
     fr_out, fr_n = fr_relabel(np.array(mask, copy=True))
     sk_out, _, _ = sk_relabel(np.array(mask, copy=True), offset=1)
-    fm_out, _ = fastremap.renumber(np.array(mask, copy=True), start=1, preserve_zero=True)
     n_fr = check_valid(fr_out, mask, "fastlabelops")
     n_sk = check_valid(sk_out, mask, "skimage")
-    n_fm = check_valid(fm_out, mask, "fastremap")
-    assert n_fr == n_sk == n_fm == actual_instances
+    assert n_fr == n_sk == actual_instances
+    if fastremap is not None:
+        fm_out, _ = fastremap.renumber(np.array(mask, copy=True), start=1, preserve_zero=True)
+        n_fm = check_valid(fm_out, mask, "fastremap")
+        assert n_fm == actual_instances
     assert fr_n == actual_instances
     print("  correctness OK")
+
     print("\n  fastlabelops:")
     fr_best, fr_mean = timed(fr_relabel, mask, repeats=repeats)
     print("  skimage:")
     sk_best, sk_mean = timed(sk_relabel, mask, repeats=repeats)
-    print("  fastremap:")
-    fm_best, fm_mean = timed(lambda a: fastremap.renumber(a, start=1, preserve_zero=True), mask, repeats=repeats)
+    fm_result = None
+    if fastremap is not None:
+        print("  fastremap:")
+        fm_result = timed(
+            lambda a: fastremap.renumber(a, start=1, preserve_zero=True),
+            mask,
+            repeats=repeats,
+        )
+
     print("\nSummary:")
     print(f"  fastlabelops  best={fr_best * 1e3:8.3f} ms  mean={fr_mean * 1e3:8.3f} ms")
-    print(f"  skimage       best={sk_best * 1e3:8.3f} ms  mean={sk_mean * 1e3:8.3f} ms  ({sk_best / fr_best:5.2f}x slower)")
-    print(f"  fastremap     best={fm_best * 1e3:8.3f} ms  mean={fm_mean * 1e3:8.3f} ms  ({fm_best / fr_best:5.2f}x slower)")
+    sk_ratio = sk_best / fr_best
+    print(
+        f"  skimage       best={sk_best * 1e3:8.3f} ms  mean={sk_mean * 1e3:8.3f} ms  "
+        f"({sk_ratio:5.2f}x slower)"
+    )
+    if fm_result is not None:
+        fm_best, fm_mean = fm_result
+        print(
+            f"  fastremap     best={fm_best * 1e3:8.3f} ms  mean={fm_mean * 1e3:8.3f} ms  "
+            f"({fm_best / fr_best:5.2f}x slower)"
+        )
 
 
 def main():
@@ -107,7 +132,12 @@ def main():
     print(f"Python: {sys.version}")
     print(f"NumPy: {np.__version__}")
     print(f"fastlabelops: {fr_relabel.__module__}")
-    print(f"fastremap: {fastremap.__version__ if hasattr(fastremap, '__version__') else 'unknown'}")
+    if fastremap is None:
+        print("fastremap: not installed (skipped)")
+    else:
+        version = fastremap.__version__ if hasattr(fastremap, "__version__") else "unknown"
+        print(f"fastremap: {version}")
+
     bench_case((2048, 2048), n_instances=5_000, max_id=5_000)
     bench_case((8192, 8192), n_instances=50_000, max_id=50_000, repeats=3)
     bench_case((8192, 8192), n_instances=1_000, max_id=2_000_000_000, dtype=np.uint32, repeats=3)

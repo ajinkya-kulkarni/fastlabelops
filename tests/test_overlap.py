@@ -78,7 +78,12 @@ def test_first_occurrence_order_is_deterministic():
     a = np.array([8, 2, 8, 3, 2], dtype=np.uint32)
     b = np.array([4, 9, 4, 1, 7], dtype=np.uint32)
     a_ids, b_ids, counts = overlap_counts(a, b)
-    assert list(zip(a_ids.tolist(), b_ids.tolist(), strict=True)) == [(8, 4), (2, 9), (3, 1), (2, 7)]
+    assert list(zip(a_ids.tolist(), b_ids.tolist(), strict=True)) == [
+        (8, 4),
+        (2, 9),
+        (3, 1),
+        (2, 7),
+    ]
     assert counts.tolist() == [2, 1, 1, 1]
 
 

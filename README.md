@@ -97,37 +97,49 @@ Rows are sorted by ascending label. Bounding boxes use
 
 ## Benchmarks
 
-The benchmark scripts keep the comparisons from the original standalone kernels and verify
-correctness before timing where applicable.
+Fresh benchmark run for the merged package on Linux x86_64 with an AMD EPYC 9V74
+(5 logical CPUs visible), Python 3.13.5, NumPy 2.3.5, and scikit-image 0.26.0.
+Correctness is checked before timing. Absolute timings are machine-dependent.
+
+`fastremap` and StarDist remain optional benchmark competitors. The scripts skip them cleanly
+when they are not installed; the fresh tables below include only competitors available in this run.
 
 ### Relabeling
 
 ```bash
+uv run --with scikit-image examples/benchmark_relabel.py
+# Optional extra competitor:
 uv run --with scikit-image --with fastremap examples/benchmark_relabel.py
 ```
 
-Sample results from Python 3.12 / NumPy 2.5.2 / Clang:
+The script reports best and mean timings; the table below uses the best timing.
 
-| Mask | `fastlabelops` | `skimage` | `fastremap` |
-|---|---:|---:|---:|
-| 2048×2048, ~3K IDs | **6.3 ms** | 46.9 ms (7.5×) | 8.5 ms (1.4×) |
-| 8192×8192, ~31K IDs | **122.7 ms** | 791.7 ms (6.5×) | 167.3 ms (1.4×) |
-| 8192×8192, ~1K IDs up to 2B | **94.2 ms** | 751.9 ms (8.0×) | 115.1 ms (1.2×) |
+| Mask | Observed IDs | `fastlabelops` | `scikit-image` | Speedup |
+|---|---:|---:|---:|---:|
+| 2048×2048 | 3,016 | **5.31 ms** | 19.95 ms | **3.76×** |
+| 8192×8192 | 30,742 | **110.46 ms** | 513.95 ms | **4.65×** |
+| 8192×8192, sparse IDs up to 2B | 999 | **79.05 ms** | 504.49 ms | **6.38×** |
 
 ### Sparse overlap counting
 
 ```bash
+uv run --with scikit-image examples/benchmark_overlap.py
+# Optional extra competitor:
 uv run --with "stardist==0.9.2" --with scikit-image examples/benchmark_overlap.py
 ```
 
-Sample MacBook Air results from the original overlap benchmark:
+The overlap script reports the median of repeated runs. Normal cases count the full contingency,
+including background.
 
-| Mask | `fastlabelops` | NumPy `unique` | `scikit-image` | StarDist raw |
+| Mask | Observed pairs | `fastlabelops` | NumPy `unique` | `scikit-image` |
 |---|---:|---:|---:|---:|
-| 1024×1024, 1K-ID pool | **1.76 ms** | 23.67 ms (13.42×) | 36.40 ms (20.63×) | 3.74 ms (2.12×) |
-| 2048×2048, 3K-ID pool | **7.04 ms** | 104.12 ms (14.78×) | 143.46 ms (20.37×) | 15.75 ms (2.24×) |
-| 4096×4096, 5K-ID pool | **27.81 ms** | 475.07 ms (17.08×) | 835.10 ms (30.02×) | 82.70 ms (2.97×) |
-| 4096×4096, 1K sparse IDs up to 2B | **26.22 ms** | 460.92 ms (17.58×) | skipped | skipped |
+| 1024×1024, 1K-ID pool | 749 | **0.70 ms** | 40.85 ms (58.77×) | 17.70 ms (25.47×) |
+| 2048×2048, 3K-ID pool | 2,801 | **2.79 ms** | 211.50 ms (75.84×) | 75.82 ms (27.19×) |
+| 4096×4096, 5K-ID pool | 8,677 | **12.30 ms** | 919.58 ms (74.74×) | 454.91 ms (36.97×) |
+| 4096×4096, 1K sparse IDs up to 2B | — | **11.90 ms** | 836.63 ms (70.29×) | skipped |
+
+For the sparse-ID stress case, a dense matrix indexed directly by the observed maximum IDs would
+require about **31.79 EB**, so scikit-image is intentionally skipped.
 
 ### Region properties
 
@@ -135,17 +147,15 @@ Sample MacBook Air results from the original overlap benchmark:
 uv run --with scikit-image examples/benchmark_regionprops.py
 ```
 
-MacBook Air results for all five supported properties against
-`skimage.measure.regionprops`:
+All five supported properties are accessed inside the timed scikit-image call. The script uses
+the best of repeated runs.
 
 | Mask | Objects | `fastlabelops` | `scikit-image` | Speedup |
 |---|---:|---:|---:|---:|
-| 1024×1024 | 3,136 | **1.01 ms** | 88.12 ms | **87.62×** |
-| 2048×2048 | 12,769 | **4.03 ms** | 351.36 ms | **87.16×** |
-| 4096×4096 | 51,529 | **16.31 ms** | 1439.00 ms | **88.22×** |
-| 2048×2048, sparse IDs | 12,769 | **3.93 ms** | 370.42 ms | **94.34×** |
-
-Absolute timings are machine-dependent.
+| 1024×1024 | 3,136 | **1.00 ms** | 82.45 ms | **82.86×** |
+| 2048×2048 | 12,769 | **3.97 ms** | 343.04 ms | **86.31×** |
+| 4096×4096 | 51,529 | **16.08 ms** | 1525.61 ms | **94.89×** |
+| 2048×2048, sparse IDs | 12,769 | **4.13 ms** | 357.01 ms | **86.44×** |
 
 ## Development
 

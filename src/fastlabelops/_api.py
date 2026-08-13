@@ -22,6 +22,9 @@ def relabel_sequential(
         raise TypeError("labels must be a NumPy array")
     if labels.dtype not in _SUPPORTED:
         raise TypeError("labels dtype must be uint32 or uint64")
+    if isinstance(offset, bool) or not isinstance(offset, (int, np.integer)):
+        raise TypeError("offset must be an integer")
+    offset = int(offset)
     if offset < 0:
         raise ValueError("offset must be non-negative")
     if offset > np.iinfo(labels.dtype).max:
