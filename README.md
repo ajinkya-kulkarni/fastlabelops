@@ -2,10 +2,11 @@
 
 Fast CPU primitives for integer instance masks. Requires Python 3.12+.
 
-`fastlabelops` combines three small operations that are commonly needed around instance
+`fastlabelops` combines four small operations that are commonly needed around instance
 segmentation and labeled images:
 
 - `relabel_sequential` — compact arbitrary IDs to sequential labels
+- `remove_small_objects` — remove labeled objects at or below an area threshold
 - `overlap_counts` — count only observed label-pair overlaps between two masks
 - `regionprops` — compute a small set of common per-label properties in 2D
 
@@ -18,7 +19,7 @@ python -m pip install .
 
 ```python
 import numpy as np
-from fastlabelops import overlap_counts, regionprops, relabel_sequential
+from fastlabelops import overlap_counts, regionprops, relabel_sequential, remove_small_objects
 
 labels = np.array(
     [
@@ -29,6 +30,7 @@ labels = np.array(
 )
 
 relabeled, n = relabel_sequential(labels)
+filtered = remove_small_objects(labels, max_size=1)
 props = regionprops(labels)
 
 a_ids, b_ids, counts = overlap_counts(labels, relabeled)
@@ -48,6 +50,22 @@ labels, n = relabel_sequential(labels, offset=0, in_place=False)
 - deterministic first-occurrence relabeling
 - `in_place=True` mutates a writable C-contiguous array
 - `offset=N` starts foreground labels at `N + 1`
+- memory scales with the number of observed labels, not `max(label)`
+
+## `remove_small_objects`
+
+```python
+labels = remove_small_objects(labels, max_size=64, in_place=False)
+```
+
+Removes every nonzero label whose total area is less than or equal to `max_size` pixels. Surviving
+objects keep their original IDs. Labels are treated as authoritative instance IDs, so disconnected
+pixels carrying the same nonzero label count toward the same object's area.
+
+- supports `uint32` and `uint64`
+- arbitrary NumPy dimensionality
+- `in_place=True` mutates a writable C-contiguous array
+- `max_size=0` is a no-op
 - memory scales with the number of observed labels, not `max(label)`
 
 ## `overlap_counts`
@@ -119,6 +137,23 @@ The script reports best and mean timings; the table below uses the best timing.
 | 2048×2048 | 3,016 | **5.31 ms** | 19.95 ms | **3.76×** |
 | 8192×8192 | 30,742 | **110.46 ms** | 513.95 ms | **4.65×** |
 | 8192×8192, sparse IDs up to 2B | 999 | **79.05 ms** | 504.49 ms | **6.38×** |
+
+### Small-object removal
+
+```bash
+uv run --with scikit-image examples/benchmark_remove_small_objects.py
+```
+
+Correctness is checked against `skimage.morphology.remove_small_objects` with labeled `uint32`
+inputs and `max_size=64` before timing. Both methods use their default copy-returning mode. The
+script uses the best of repeated runs.
+
+| Mask | Objects | `fastlabelops` | `scikit-image` | Speedup |
+|---|---:|---:|---:|---:|
+| 1024×1024 | 2,601 | **1.02 ms** | 3.89 ms | **3.80×** |
+| 2048×2048 | 10,404 | **3.99 ms** | 19.14 ms | **4.79×** |
+| 4096×4096 | 41,616 | **23.50 ms** | 80.07 ms | **3.41×** |
+| 2048×2048, sparse IDs | 10,404 | **4.05 ms** | 19.11 ms | **4.72×** |
 
 ### Sparse overlap counting
 

@@ -5,6 +5,24 @@ import numpy as np
 from . import _core
 
 _SUPPORTED = (np.dtype(np.uint32), np.dtype(np.uint64))
+_UINT64_MAX = int(np.iinfo(np.uint64).max)
+
+
+def _validate_labels(labels: np.ndarray) -> None:
+    if not isinstance(labels, np.ndarray):
+        raise TypeError("labels must be a NumPy array")
+    if labels.dtype not in _SUPPORTED:
+        raise TypeError("labels dtype must be uint32 or uint64")
+
+
+def _prepare_output(labels: np.ndarray, *, in_place: bool) -> np.ndarray:
+    if in_place:
+        if not labels.flags.c_contiguous:
+            raise ValueError("in_place=True requires a C-contiguous array")
+        if not labels.flags.writeable:
+            raise ValueError("in_place=True requires a writable array")
+        return labels
+    return np.array(labels, copy=True, order="C")
 
 
 def relabel_sequential(
@@ -18,10 +36,7 @@ def relabel_sequential(
     Background label 0 is preserved. New labels are ``offset + 1`` through
     ``offset + n_instances``.
     """
-    if not isinstance(labels, np.ndarray):
-        raise TypeError("labels must be a NumPy array")
-    if labels.dtype not in _SUPPORTED:
-        raise TypeError("labels dtype must be uint32 or uint64")
+    _validate_labels(labels)
     if isinstance(offset, bool) or not isinstance(offset, (int, np.integer)):
         raise TypeError("offset must be an integer")
     offset = int(offset)
@@ -30,17 +45,35 @@ def relabel_sequential(
     if offset > np.iinfo(labels.dtype).max:
         raise OverflowError("offset exceeds label dtype range")
 
-    if in_place:
-        if not labels.flags.c_contiguous:
-            raise ValueError("in_place=True requires a C-contiguous array")
-        if not labels.flags.writeable:
-            raise ValueError("in_place=True requires a writable array")
-        out = labels
-    else:
-        out = np.array(labels, copy=True, order="C")
-
+    out = _prepare_output(labels, in_place=in_place)
     n = _core.relabel_inplace(out, int(offset))
     return out, int(n)
+
+
+def remove_small_objects(
+    labels: np.ndarray,
+    *,
+    max_size: int = 64,
+    in_place: bool = False,
+) -> np.ndarray:
+    """Remove labeled objects whose area is at most ``max_size`` pixels.
+
+    Background label 0 is preserved. Nonzero labels are treated as existing
+    instance IDs, so disconnected pixels carrying the same ID count toward the
+    same object's area. Surviving labels keep their original IDs.
+    """
+    _validate_labels(labels)
+    if isinstance(max_size, (bool, np.bool_)) or not isinstance(max_size, (int, np.integer)):
+        raise TypeError("max_size must be an integer")
+    max_size = int(max_size)
+    if max_size < 0:
+        raise ValueError("max_size must be non-negative")
+    if max_size > _UINT64_MAX:
+        raise OverflowError("max_size exceeds uint64 range")
+
+    out = _prepare_output(labels, in_place=in_place)
+    _core.remove_small_objects_inplace(out, max_size)
+    return out
 
 
 def overlap_counts(

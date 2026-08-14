@@ -12,7 +12,9 @@
 #include <utility>
 #include <vector>
 
+#include "_label_map.inc"
 #include "_relabel.inc"
+#include "_remove_small.inc"
 #include "_overlap.inc"
 #include "_props.inc"
 
@@ -24,6 +26,12 @@ PyMethodDef methods[] = {
         relabel_impl::py_relabel_inplace,
         METH_VARARGS,
         "Relabel a writable contiguous uint array in place."
+    },
+    {
+        "remove_small_objects_inplace",
+        remove_small_impl::py_remove_small_objects_inplace,
+        METH_VARARGS,
+        "Remove small labeled objects from a writable contiguous uint array in place."
     },
     {
         "overlap_counts",
