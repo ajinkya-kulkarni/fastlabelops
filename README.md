@@ -5,9 +5,9 @@ Fast CPU primitives for integer instance masks. Requires Python 3.12+.
 `fastlabelops` combines five small operations that are commonly needed around instance
 segmentation and labeled images:
 
-- `label_counts` — count pixels for each observed label
+- `label_counts` — count elements for each observed label
 - `relabel_sequential` — compact arbitrary IDs to sequential labels
-- `remove_small_objects` — remove labeled objects at or below an area threshold
+- `remove_small_objects` — remove labeled objects at or below a size threshold
 - `overlap_counts` — count only observed label-pair overlaps between two masks
 - `regionprops` — compute a small set of common per-label properties in 2D
 
@@ -53,7 +53,7 @@ perform connected-component labeling.
 ids, counts = label_counts(labels, include_background=False)
 ```
 
-Counts pixels for each observed label ID. IDs are returned in ascending order and counts are
+Counts elements for each observed label ID. IDs are returned in ascending order and counts are
 `uint64`. Background label `0` is excluded by default; use `include_background=True` to include it.
 
 - supports `uint32` and `uint64`
@@ -81,9 +81,9 @@ labels, n = relabel_sequential(labels, offset=0, in_place=False)
 labels = remove_small_objects(labels, max_size=64, in_place=False)
 ```
 
-Removes every nonzero label whose total area is less than or equal to `max_size` pixels. Surviving
+Removes every nonzero label whose total size is less than or equal to `max_size` elements. Surviving
 objects keep their original IDs. Labels are treated as authoritative instance IDs, so disconnected
-pixels carrying the same nonzero label count toward the same object's area.
+elements carrying the same nonzero label count toward the same object's size.
 
 - supports `uint32` and `uint64`
 - arbitrary NumPy dimensionality
@@ -138,7 +138,7 @@ Rows are sorted by ascending label. Bounding boxes use
 
 ## Benchmarks
 
-Fresh benchmark run for the merged package on Linux x86_64 with an AMD EPYC 9V74
+Fresh benchmark run for the current package on Linux x86_64 with an AMD EPYC 9V74
 (5 logical CPUs visible), Python 3.13.5, NumPy 2.3.5, and scikit-image 0.26.0.
 Correctness is checked before timing. Absolute timings are machine-dependent.
 
