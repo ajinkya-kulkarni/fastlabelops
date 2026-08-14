@@ -21,6 +21,13 @@ def test_sparse_uint64_ids() -> None:
     np.testing.assert_array_equal(out["label"], [17, 91, large_id])
 
 
+def test_many_unique_labels_force_hash_growth() -> None:
+    labels = np.arange(1, 20_001, dtype=np.uint32).reshape(200, 100)
+    out = regionprops(labels)
+    np.testing.assert_array_equal(out["label"], np.arange(1, 20_001, dtype=np.uint32))
+    np.testing.assert_array_equal(out["area"], np.ones(20_000, dtype=np.int64))
+
+
 def test_non_contiguous_empty_and_validation() -> None:
     labels = np.array([[0, 1], [2, 0]], dtype=np.uint32)[:, ::-1]
     assert not labels.flags.c_contiguous

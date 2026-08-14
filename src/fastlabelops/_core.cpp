@@ -8,11 +8,11 @@
 #include <cstring>
 #include <limits>
 #include <new>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "_label_map.inc"
+#include "_counts.inc"
 #include "_relabel.inc"
 #include "_remove_small.inc"
 #include "_overlap.inc"
@@ -21,6 +21,12 @@
 namespace {
 
 PyMethodDef methods[] = {
+    {
+        "label_counts",
+        count_impl::py_label_counts,
+        METH_VARARGS,
+        "Count observed labels in an integer instance mask."
+    },
     {
         "relabel_inplace",
         relabel_impl::py_relabel_inplace,

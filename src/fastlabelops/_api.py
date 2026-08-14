@@ -25,6 +25,21 @@ def _prepare_output(labels: np.ndarray, *, in_place: bool) -> np.ndarray:
     return np.array(labels, copy=True, order="C")
 
 
+def label_counts(
+    labels: np.ndarray,
+    *,
+    include_background: bool = False,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Count pixels for each observed label in an integer instance mask.
+
+    Label IDs are returned in ascending order. Background label 0 is excluded by
+    default and can be included with ``include_background=True``. Counts are
+    returned as ``uint64``.
+    """
+    _validate_labels(labels)
+    return _core.label_counts(np.ascontiguousarray(labels), bool(include_background))
+
+
 def relabel_sequential(
     labels: np.ndarray,
     *,
@@ -106,12 +121,9 @@ def regionprops(labels: np.ndarray) -> dict[str, np.ndarray]:
     Output rows are sorted by ascending label. Bounding boxes use
     ``(min_row, min_col, max_row_exclusive, max_col_exclusive)``.
     """
-    if not isinstance(labels, np.ndarray):
-        raise TypeError("labels must be a NumPy array")
+    _validate_labels(labels)
     if labels.ndim != 2:
         raise ValueError("labels must be a 2D array")
-    if labels.dtype not in _SUPPORTED:
-        raise TypeError("labels dtype must be uint32 or uint64")
 
     out_label, stats, centroid = _core.regionprops2d(np.ascontiguousarray(labels))
     return {

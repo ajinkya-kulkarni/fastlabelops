@@ -3,6 +3,10 @@ from __future__ import annotations
 import numpy as np
 
 
+def label_counts(
+    labels: np.ndarray,
+    include_background: bool,
+) -> tuple[np.ndarray, np.ndarray]: ...
 def relabel_inplace(labels: np.ndarray, offset: int) -> int: ...
 def remove_small_objects_inplace(labels: np.ndarray, max_size: int) -> None: ...
 def overlap_counts(
