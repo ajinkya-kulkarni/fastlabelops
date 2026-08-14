@@ -30,7 +30,7 @@ def label_counts(
     *,
     include_background: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Count pixels for each observed label in an integer instance mask.
+    """Count elements for each observed label in an integer instance mask.
 
     Label IDs are returned in ascending order. Background label 0 is excluded by
     default and can be included with ``include_background=True``. Counts are
@@ -71,11 +71,11 @@ def remove_small_objects(
     max_size: int = 64,
     in_place: bool = False,
 ) -> np.ndarray:
-    """Remove labeled objects whose area is at most ``max_size`` pixels.
+    """Remove labeled objects whose size is at most ``max_size`` elements.
 
     Background label 0 is preserved. Nonzero labels are treated as existing
-    instance IDs, so disconnected pixels carrying the same ID count toward the
-    same object's area. Surviving labels keep their original IDs.
+    instance IDs, so disconnected elements carrying the same ID count toward the
+    same object's size. Surviving labels keep their original IDs.
     """
     _validate_labels(labels)
     if isinstance(max_size, (bool, np.bool_)) or not isinstance(max_size, (int, np.integer)):
