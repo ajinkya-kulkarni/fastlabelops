@@ -20,6 +20,13 @@ def test_first_occurrence_order():
     assert n == 3
 
 
+def test_high_bit_uint64_ids_force_hash_growth():
+    x = (np.arange(1, 50_001, dtype=np.uint64) << np.uint64(32)) + 1
+    y, n = relabel_sequential(x)
+    np.testing.assert_array_equal(y, np.arange(1, x.size + 1, dtype=np.uint64))
+    assert n == x.size
+
+
 @pytest.mark.parametrize("offset", [1.5, np.float64(2.5), True, np.bool_(False)])
 def test_offset_requires_integer(offset):
     x = np.array([0, 7], dtype=np.uint32)

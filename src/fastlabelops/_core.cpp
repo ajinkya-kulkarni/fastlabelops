@@ -1,16 +1,17 @@
-#define PY_SSIZE_T_CLEAN
-#include <Python.h>
-#define NPY_NO_DEPRECATED_API NPY_1_20_API_VERSION
-#include <numpy/arrayobject.h>
+#include "_bindings.inc"
 
 #include <algorithm>
+#include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <limits>
 #include <new>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
+// Implementation fragments are included once, in dependency order.
 #include "_label_map.inc"
 #include "_counts.inc"
 #include "_relabel.inc"

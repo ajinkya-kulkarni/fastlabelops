@@ -56,6 +56,7 @@ def test_sparse_uint64_ids():
 def test_zero_threshold_is_noop():
     labels = np.array([0, 5, 10], dtype=np.uint32)
     out = remove_small_objects(labels, max_size=0)
+    assert out is not labels
     np.testing.assert_array_equal(out, labels)
 
 
@@ -111,8 +112,14 @@ def test_negative_max_size_rejected():
 
 def test_max_size_over_uint64_rejected():
     labels = np.array([0, 7], dtype=np.uint32)
-    with pytest.raises(OverflowError, match="uint64"):
+    with pytest.raises(OverflowError, match="uint64 range"):
         remove_small_objects(labels, max_size=2**64)
+
+
+def test_high_bit_uint64_ids_force_hash_growth():
+    labels = (np.arange(1, 50_001, dtype=np.uint64) << np.uint64(32)) + 1
+    out = remove_small_objects(labels, max_size=1)
+    np.testing.assert_array_equal(out, np.zeros_like(labels))
 
 
 @pytest.mark.parametrize("dtype", [np.uint32, np.uint64])

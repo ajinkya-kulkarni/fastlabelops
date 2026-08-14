@@ -54,7 +54,8 @@ ids, counts = label_counts(labels, include_background=False)
 ```
 
 Counts elements for each observed label ID. IDs are returned in ascending order and counts are
-`uint64`. Background label `0` is excluded by default; use `include_background=True` to include it.
+`uint64`. Background label `0` is excluded by default; use `include_background=True` to include it
+when it is present in the input.
 
 - supports `uint32` and `uint64`
 - arbitrary NumPy dimensionality
@@ -65,7 +66,7 @@ Counts elements for each observed label ID. IDs are returned in ascending order 
 ## `relabel_sequential`
 
 ```python
-labels, n = relabel_sequential(labels, offset=0, in_place=False)
+relabeled, n = relabel_sequential(labels, offset=0, in_place=False)
 ```
 
 - supports `uint32` and `uint64`
@@ -78,7 +79,7 @@ labels, n = relabel_sequential(labels, offset=0, in_place=False)
 ## `remove_small_objects`
 
 ```python
-labels = remove_small_objects(labels, max_size=64, in_place=False)
+filtered = remove_small_objects(labels, max_size=64, in_place=False)
 ```
 
 Removes every nonzero label whose total size is less than or equal to `max_size` elements. Surviving
@@ -94,7 +95,7 @@ elements carrying the same nonzero label count toward the same object's size.
 ## `overlap_counts`
 
 ```python
-a_ids, b_ids, counts = overlap_counts(labels_a, labels_b)
+a_ids, b_ids, counts = overlap_counts(labels_a, labels_b, include_background=False)
 ```
 
 The three output arrays describe only label pairs that actually occur. By default, positions
@@ -138,9 +139,15 @@ Rows are sorted by ascending label. Bounding boxes use
 
 ## Benchmarks
 
-Fresh benchmark run for the current package on Linux x86_64 with an AMD EPYC 9V74
-(5 logical CPUs visible), Python 3.13.5, NumPy 2.3.5, and scikit-image 0.26.0.
-Correctness is checked before timing. Absolute timings are machine-dependent.
+Fresh CPU-only benchmark run for the current package on a MacBook Air with an Apple M3
+(8 CPU cores: 4 performance and 4 efficiency), 16 GB RAM, macOS 14.8.7 arm64,
+Python 3.12.13, NumPy 2.5.2, and scikit-image 0.26.0. Correctness is checked before
+timing. Absolute timings are machine-dependent.
+
+Each suite was launched twice; relabeling was launched three times after cooling because its
+268 MB cases showed more thermal variance on the fanless MacBook Air. Tables use the best observed
+timing for best-based scripts and the lower observed median for overlap. Ratios are calculated from
+the displayed timings.
 
 `fastremap` and StarDist remain optional benchmark competitors. The scripts skip them cleanly
 when they are not installed; the fresh tables below include only competitors available in this run.
@@ -161,10 +168,10 @@ in this benchmark environment, so it is included by the script but not in the ta
 
 | Mask | Objects | `fastlabelops` | NumPy `unique` | NumPy `bincount` + extract |
 |---|---:|---:|---:|---:|
-| 1024×1024 | 3,136 | **0.48 ms** | 16.90 ms (35.52×) | 1.65 ms (3.44×) |
-| 2048×2048 | 12,769 | **1.82 ms** | 78.39 ms (43.01×) | 8.97 ms (4.93×) |
-| 4096×4096 | 51,529 | **7.51 ms** | 362.38 ms (48.26×) | 34.99 ms (4.66×) |
-| 2048×2048, sparse IDs up to 472M | 12,769 | **1.85 ms** | 79.87 ms (43.18×) | skipped |
+| 1024×1024 | 3,136 | **0.73 ms** | 7.53 ms (10.32×) | 5.57 ms (7.63×) |
+| 2048×2048 | 12,769 | **3.14 ms** | 33.77 ms (10.75×) | 23.02 ms (7.33×) |
+| 4096×4096 | 51,529 | **12.36 ms** | 151.45 ms (12.25×) | 93.55 ms (7.57×) |
+| 2048×2048, sparse IDs up to 472M | 12,769 | **3.09 ms** | 35.04 ms (11.34×) | skipped |
 
 ### Relabeling
 
@@ -178,9 +185,9 @@ The script reports best and mean timings; the table below uses the best timing.
 
 | Mask | Observed IDs | `fastlabelops` | `scikit-image` | Speedup |
 |---|---:|---:|---:|---:|
-| 2048×2048 | 3,016 | **5.31 ms** | 19.95 ms | **3.76×** |
-| 8192×8192 | 30,742 | **110.46 ms** | 513.95 ms | **4.65×** |
-| 8192×8192, sparse IDs up to 2B | 999 | **79.05 ms** | 504.49 ms | **6.38×** |
+| 2048×2048 | 3,016 | **5.92 ms** | 45.66 ms | **7.71×** |
+| 8192×8192 | 30,742 | **129.71 ms** | 763.71 ms | **5.89×** |
+| 8192×8192, sparse IDs up to 2B | 999 | **76.83 ms** | 734.42 ms | **9.56×** |
 
 ### Small-object removal
 
@@ -194,10 +201,10 @@ script uses the best of repeated runs.
 
 | Mask | Objects | `fastlabelops` | `scikit-image` | Speedup |
 |---|---:|---:|---:|---:|
-| 1024×1024 | 2,601 | **1.02 ms** | 3.89 ms | **3.80×** |
-| 2048×2048 | 10,404 | **3.99 ms** | 19.14 ms | **4.79×** |
-| 4096×4096 | 41,616 | **23.50 ms** | 80.07 ms | **3.41×** |
-| 2048×2048, sparse IDs | 10,404 | **4.05 ms** | 19.11 ms | **4.72×** |
+| 1024×1024 | 2,601 | **1.58 ms** | 7.99 ms | **5.06×** |
+| 2048×2048 | 10,404 | **6.44 ms** | 33.02 ms | **5.13×** |
+| 4096×4096 | 41,616 | **26.96 ms** | 131.03 ms | **4.86×** |
+| 2048×2048, sparse IDs | 10,404 | **6.54 ms** | 32.69 ms | **5.00×** |
 
 ### Sparse overlap counting
 
@@ -212,10 +219,10 @@ including background.
 
 | Mask | Observed pairs | `fastlabelops` | NumPy `unique` | `scikit-image` |
 |---|---:|---:|---:|---:|
-| 1024×1024, 1K-ID pool | 749 | **0.70 ms** | 40.85 ms (58.77×) | 17.70 ms (25.47×) |
-| 2048×2048, 3K-ID pool | 2,801 | **2.79 ms** | 211.50 ms (75.84×) | 75.82 ms (27.19×) |
-| 4096×4096, 5K-ID pool | 8,677 | **12.30 ms** | 919.58 ms (74.74×) | 454.91 ms (36.97×) |
-| 4096×4096, 1K sparse IDs up to 2B | — | **11.90 ms** | 836.63 ms (70.29×) | skipped |
+| 1024×1024, 1K-ID pool | 749 | **0.80 ms** | 22.67 ms (28.34×) | 34.65 ms (43.31×) |
+| 2048×2048, 3K-ID pool | 2,801 | **3.95 ms** | 110.12 ms (27.88×) | 146.54 ms (37.10×) |
+| 4096×4096, 5K-ID pool | 8,677 | **14.26 ms** | 470.89 ms (33.02×) | 804.54 ms (56.42×) |
+| 4096×4096, 1K sparse IDs up to 2B | — | **13.35 ms** | 453.79 ms (33.99×) | skipped |
 
 For the sparse-ID stress case, a dense matrix indexed directly by the observed maximum IDs would
 require about **31.79 EB**, so scikit-image is intentionally skipped.
@@ -231,10 +238,10 @@ the best of repeated runs.
 
 | Mask | Objects | `fastlabelops` | `scikit-image` | Speedup |
 |---|---:|---:|---:|---:|
-| 1024×1024 | 3,136 | **0.79 ms** | 86.43 ms | **109.08×** |
-| 2048×2048 | 12,769 | **2.94 ms** | 350.86 ms | **119.52×** |
-| 4096×4096 | 51,529 | **14.04 ms** | 1494.65 ms | **106.49×** |
-| 2048×2048, sparse IDs | 12,769 | **3.26 ms** | 361.50 ms | **110.74×** |
+| 1024×1024 | 3,136 | **0.78 ms** | 88.32 ms | **113.23×** |
+| 2048×2048 | 12,769 | **3.22 ms** | 360.47 ms | **111.95×** |
+| 4096×4096 | 51,529 | **13.77 ms** | 1454.43 ms | **105.62×** |
+| 2048×2048, sparse IDs | 12,769 | **3.22 ms** | 369.78 ms | **114.84×** |
 
 ## Development
 

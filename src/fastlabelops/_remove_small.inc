@@ -8,7 +8,9 @@ void remove_small_kernel(Label* data, std::size_t n, uint64_t max_size) {
         return;
     }
 
-    label_map_impl::FlatMap<Label, uint64_t> counts;
+    label_map_impl::LabelMap<Label, uint64_t> counts(
+        std::min(n, label_map_impl::kDefaultInitialCapacity)
+    );
     count_impl::accumulate_counts(data, n, counts);
 
     for (std::size_t i = 0; i < n;) {
@@ -26,56 +28,38 @@ void remove_small_kernel(Label* data, std::size_t n, uint64_t max_size) {
     }
 }
 
-template <typename Label>
-void dispatch_remove_small(PyArrayObject* arr, uint64_t max_size) {
-    remove_small_kernel(
-        reinterpret_cast<Label*>(PyArray_DATA(arr)),
-        static_cast<std::size_t>(PyArray_SIZE(arr)),
-        max_size
-    );
-}
-
 PyObject* py_remove_small_objects_inplace(PyObject*, PyObject* args) {
     PyObject* obj = nullptr;
     unsigned long long max_size = 0;
     if (!PyArg_ParseTuple(args, "OK:remove_small_objects_inplace", &obj, &max_size)) return nullptr;
-    if (!PyArray_Check(obj)) {
-        PyErr_SetString(PyExc_TypeError, "labels must be a NumPy array");
-        return nullptr;
-    }
 
-    auto* arr = reinterpret_cast<PyArrayObject*>(obj);
-    if (!PyArray_ISCARRAY(arr)) {
-        PyErr_SetString(PyExc_ValueError, "array must be writable and C-contiguous");
-        return nullptr;
-    }
+    auto* arr = bindings::require_array(obj, "labels");
+    if (arr == nullptr) return nullptr;
+    if (!bindings::require_contiguous(arr, "labels", true)) return nullptr;
 
     const int typenum = PyArray_TYPE(arr);
-    int cpp_error = 0;
-
-    Py_BEGIN_ALLOW_THREADS
-    try {
-        if (typenum == NPY_UINT32) {
-            dispatch_remove_small<uint32_t>(arr, max_size);
-        } else if (typenum == NPY_UINT64) {
-            dispatch_remove_small<uint64_t>(arr, max_size);
-        }
-    } catch (const std::bad_alloc&) {
-        cpp_error = 1;
-    } catch (...) {
-        cpp_error = 2;
-    }
-    Py_END_ALLOW_THREADS
-
-    if (cpp_error == 1) return PyErr_NoMemory();
-    if (cpp_error == 2) {
-        PyErr_SetString(PyExc_RuntimeError, "unexpected C++ error in remove-small-objects kernel");
-        return nullptr;
-    }
     if (typenum != NPY_UINT32 && typenum != NPY_UINT64) {
-        PyErr_SetString(PyExc_TypeError, "dtype must be uint32 or uint64");
+        PyErr_SetString(PyExc_TypeError, "labels dtype must be uint32 or uint64");
         return nullptr;
     }
+
+    const std::size_t n = static_cast<std::size_t>(PyArray_SIZE(arr));
+    bool ok = false;
+    if (typenum == NPY_UINT32) {
+        auto* data = reinterpret_cast<uint32_t*>(PyArray_DATA(arr));
+        ok = bindings::run_with_gil_released(
+            [&] { remove_small_kernel(data, n, max_size); },
+            "remove-small-objects kernel"
+        );
+    } else {
+        auto* data = reinterpret_cast<uint64_t*>(PyArray_DATA(arr));
+        ok = bindings::run_with_gil_released(
+            [&] { remove_small_kernel(data, n, max_size); },
+            "remove-small-objects kernel"
+        );
+    }
+
+    if (!ok) return nullptr;
     Py_RETURN_NONE;
 }
 

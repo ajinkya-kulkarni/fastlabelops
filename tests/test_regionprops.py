@@ -22,17 +22,23 @@ def test_sparse_uint64_ids() -> None:
 
 
 def test_many_unique_labels_force_hash_growth() -> None:
-    labels = np.arange(1, 20_001, dtype=np.uint32).reshape(200, 100)
+    labels = ((np.arange(1, 50_001, dtype=np.uint64) << np.uint64(32)) + 1).reshape(500, 100)
     out = regionprops(labels)
-    np.testing.assert_array_equal(out["label"], np.arange(1, 20_001, dtype=np.uint32))
-    np.testing.assert_array_equal(out["area"], np.ones(20_000, dtype=np.int64))
+    np.testing.assert_array_equal(out["label"], labels.ravel())
+    np.testing.assert_array_equal(out["area"], np.ones(labels.size, dtype=np.int64))
 
 
 def test_non_contiguous_empty_and_validation() -> None:
     labels = np.array([[0, 1], [2, 0]], dtype=np.uint32)[:, ::-1]
     assert not labels.flags.c_contiguous
-    np.testing.assert_array_equal(regionprops(labels)["area"], [1, 1])
+    strided = regionprops(labels)
+    np.testing.assert_array_equal(strided["area"], [1, 1])
+    np.testing.assert_array_equal(strided["bbox"], [[0, 0, 1, 1], [1, 1, 2, 2]])
+    np.testing.assert_array_equal(strided["centroid"], [[0, 0], [1, 1]])
     out = regionprops(np.zeros((3, 4), dtype=np.uint32))
+    assert out["label"].dtype == np.uint32
+    assert out["area"].dtype == np.int64
+    assert out["centroid"].dtype == np.float64
     assert out["bbox"].shape == (0, 4)
     assert out["centroid"].shape == (0, 2)
     for dtype in (np.int32, np.float32, np.bool_):

@@ -4,18 +4,26 @@ template <typename Label>
 struct RegionStats {
     Label label = Label{0};
     uint64_t area = 0;
-    npy_intp min_row = 0;
-    npy_intp min_col = 0;
-    npy_intp max_row = 0;
-    npy_intp max_col = 0;
+    int64_t min_row = 0;
+    int64_t min_col = 0;
+    int64_t max_row = 0;
+    int64_t max_col = 0;
     long double sum_row = 0;
     long double sum_col = 0;
 };
 
 template <typename Label>
-void scan_labels(const Label* data, npy_intp height, npy_intp width, std::vector<RegionStats<Label>>& regions) {
-    label_map_impl::FlatMap<Label, std::size_t> index;
-    regions.reserve(16384);
+void scan_labels(
+    const Label* data,
+    npy_intp height,
+    npy_intp width,
+    std::size_t size,
+    std::vector<RegionStats<Label>>& regions
+) {
+    const std::size_t initial_capacity =
+        std::min(size, label_map_impl::kDefaultInitialCapacity);
+    label_map_impl::LabelMap<Label, std::size_t> index(initial_capacity);
+    regions.reserve(initial_capacity);
 
     for (npy_intp row = 0; row < height; ++row) {
         const Label* row_data = data + row * width;
@@ -26,33 +34,40 @@ void scan_labels(const Label* data, npy_intp height, npy_intp width, std::vector
 
             if (label != Label{0}) {
                 const uint64_t n = static_cast<uint64_t>(run_end - col);
+                const int64_t col_start = static_cast<int64_t>(col);
+                const int64_t col_end = static_cast<int64_t>(run_end);
+                const int64_t row_i = static_cast<int64_t>(row);
                 const long double sum_col =
-                    (static_cast<long double>(col) + static_cast<long double>(run_end - 1)) * n / 2.0L;
+                    (static_cast<long double>(col_start) +
+                     static_cast<long double>(col_end - 1)) *
+                    n / 2.0L;
+
                 auto [region_index, inserted] = index.get_or_insert(label, regions.size());
                 if (inserted) {
-                    RegionStats<Label> r;
-                    r.label = label;
-                    r.area = n;
-                    r.min_row = r.max_row = row;
-                    r.min_col = col;
-                    r.max_col = run_end - 1;
-                    r.sum_row = static_cast<long double>(row) * n;
-                    r.sum_col = sum_col;
-                    regions.push_back(r);
+                    RegionStats<Label> region;
+                    region.label = label;
+                    region.area = n;
+                    region.min_row = region.max_row = row_i;
+                    region.min_col = col_start;
+                    region.max_col = col_end - 1;
+                    region.sum_row = static_cast<long double>(row_i) * n;
+                    region.sum_col = sum_col;
+                    regions.push_back(region);
                 } else {
-                    auto& r = regions[*region_index];
-                    r.area += n;
-                    r.min_row = std::min(r.min_row, row);
-                    r.max_row = std::max(r.max_row, row);
-                    r.min_col = std::min(r.min_col, col);
-                    r.max_col = std::max(r.max_col, run_end - 1);
-                    r.sum_row += static_cast<long double>(row) * n;
-                    r.sum_col += sum_col;
+                    auto& region = regions[*region_index];
+                    region.area += n;
+                    region.min_row = std::min(region.min_row, row_i);
+                    region.max_row = std::max(region.max_row, row_i);
+                    region.min_col = std::min(region.min_col, col_start);
+                    region.max_col = std::max(region.max_col, col_end - 1);
+                    region.sum_row += static_cast<long double>(row_i) * n;
+                    region.sum_col += sum_col;
                 }
             }
             col = run_end;
         }
     }
+    std::sort(regions.begin(), regions.end(), [](const auto& a, const auto& b) { return a.label < b.label; });
 }
 
 template <typename Label>
@@ -62,10 +77,17 @@ PyObject* build_result(const std::vector<RegionStats<Label>>& regions, int typen
     npy_intp ds[2] = {n, 6};
     npy_intp dc[2] = {n, 2};
     PyObject* labels_obj = PyArray_SimpleNew(1, d1, typenum);
+    if (labels_obj == nullptr) return nullptr;
     PyObject* stats_obj = PyArray_SimpleNew(2, ds, NPY_INT64);
+    if (stats_obj == nullptr) {
+        Py_DECREF(labels_obj);
+        return nullptr;
+    }
     PyObject* centroid_obj = PyArray_SimpleNew(2, dc, NPY_FLOAT64);
-    if (!labels_obj || !stats_obj || !centroid_obj) {
-        Py_XDECREF(labels_obj); Py_XDECREF(stats_obj); Py_XDECREF(centroid_obj); return nullptr;
+    if (centroid_obj == nullptr) {
+        Py_DECREF(labels_obj);
+        Py_DECREF(stats_obj);
+        return nullptr;
     }
 
     auto* labels = reinterpret_cast<Label*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(labels_obj)));
@@ -88,7 +110,12 @@ PyObject* build_result(const std::vector<RegionStats<Label>>& regions, int typen
     }
 
     PyObject* result = PyTuple_New(3);
-    if (!result) { Py_DECREF(labels_obj); Py_DECREF(stats_obj); Py_DECREF(centroid_obj); return nullptr; }
+    if (!result) {
+        Py_DECREF(labels_obj);
+        Py_DECREF(stats_obj);
+        Py_DECREF(centroid_obj);
+        return nullptr;
+    }
     PyTuple_SET_ITEM(result, 0, labels_obj);
     PyTuple_SET_ITEM(result, 1, stats_obj);
     PyTuple_SET_ITEM(result, 2, centroid_obj);
@@ -97,55 +124,41 @@ PyObject* build_result(const std::vector<RegionStats<Label>>& regions, int typen
 
 template <typename Label>
 PyObject* dispatch(PyArrayObject* arr, int typenum) {
+    const auto* data = reinterpret_cast<const Label*>(PyArray_DATA(arr));
+    const npy_intp height = PyArray_DIM(arr, 0);
+    const npy_intp width = PyArray_DIM(arr, 1);
+    const std::size_t size = static_cast<std::size_t>(PyArray_SIZE(arr));
     std::vector<RegionStats<Label>> regions;
-    int cpp_error = 0;
-    Py_BEGIN_ALLOW_THREADS
-    try {
-        scan_labels(
-            reinterpret_cast<const Label*>(PyArray_DATA(arr)),
-            PyArray_DIM(arr, 0),
-            PyArray_DIM(arr, 1),
-            regions
-        );
-        std::sort(regions.begin(), regions.end(), [](const auto& a, const auto& b) { return a.label < b.label; });
-    } catch (const std::bad_alloc&) {
-        cpp_error = 1;
-    } catch (...) {
-        cpp_error = 2;
-    }
-    Py_END_ALLOW_THREADS
-
-    if (cpp_error == 1) return PyErr_NoMemory();
-    if (cpp_error == 2) {
-        PyErr_SetString(PyExc_RuntimeError, "unexpected C++ error in regionprops kernel");
-        return nullptr;
-    }
+    const bool ok = bindings::run_with_gil_released(
+        [&] { scan_labels(data, height, width, size, regions); },
+        "regionprops kernel"
+    );
+    if (!ok) return nullptr;
     return build_result(regions, typenum);
 }
 
 PyObject* py_regionprops2d(PyObject*, PyObject* args) {
     PyObject* obj = nullptr;
     if (!PyArg_ParseTuple(args, "O:regionprops2d", &obj)) return nullptr;
-    if (!PyArray_Check(obj)) {
-        PyErr_SetString(PyExc_TypeError, "labels must be a NumPy array");
-        return nullptr;
-    }
 
-    auto* arr = reinterpret_cast<PyArrayObject*>(obj);
+    auto* arr = bindings::require_array(obj, "labels");
+    if (arr == nullptr) return nullptr;
     if (PyArray_NDIM(arr) != 2) {
         PyErr_SetString(PyExc_ValueError, "labels must be a 2D array");
         return nullptr;
     }
-    if (!PyArray_ISCARRAY_RO(arr)) {
-        PyErr_SetString(PyExc_ValueError, "labels must be aligned native-endian C-contiguous");
+    if (!bindings::require_contiguous(arr, "labels", false)) return nullptr;
+
+    const int typenum = PyArray_TYPE(arr);
+    if (typenum != NPY_UINT32 && typenum != NPY_UINT64) {
+        PyErr_SetString(PyExc_TypeError, "labels dtype must be uint32 or uint64");
         return nullptr;
     }
 
-    const int typenum = PyArray_TYPE(arr);
-    if (typenum == NPY_UINT32) return dispatch<uint32_t>(arr, typenum);
-    if (typenum == NPY_UINT64) return dispatch<uint64_t>(arr, typenum);
-    PyErr_SetString(PyExc_TypeError, "labels dtype must be uint32 or uint64");
-    return nullptr;
+    if (typenum == NPY_UINT32) {
+        return dispatch<uint32_t>(arr, typenum);
+    }
+    return dispatch<uint64_t>(arr, typenum);
 }
 
 }  // namespace props_impl
