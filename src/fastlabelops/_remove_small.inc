@@ -9,19 +9,7 @@ void remove_small_kernel(Label* data, std::size_t n, uint64_t max_size) {
     }
 
     label_map_impl::FlatMap<Label, uint64_t> counts;
-
-    for (std::size_t i = 0; i < n;) {
-        const Label label = data[i];
-        std::size_t run_end = i + 1;
-        while (run_end < n && data[run_end] == label) ++run_end;
-
-        if (label != Label{0}) {
-            auto [count, inserted] = counts.get_or_insert(label, uint64_t{0});
-            (void)inserted;
-            *count += static_cast<uint64_t>(run_end - i);
-        }
-        i = run_end;
-    }
+    count_impl::accumulate_counts(data, n, counts);
 
     for (std::size_t i = 0; i < n;) {
         const Label label = data[i];

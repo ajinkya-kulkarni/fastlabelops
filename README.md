@@ -2,9 +2,10 @@
 
 Fast CPU primitives for integer instance masks. Requires Python 3.12+.
 
-`fastlabelops` combines four small operations that are commonly needed around instance
+`fastlabelops` combines five small operations that are commonly needed around instance
 segmentation and labeled images:
 
+- `label_counts` — count pixels for each observed label
 - `relabel_sequential` — compact arbitrary IDs to sequential labels
 - `remove_small_objects` — remove labeled objects at or below an area threshold
 - `overlap_counts` — count only observed label-pair overlaps between two masks
@@ -19,7 +20,13 @@ python -m pip install .
 
 ```python
 import numpy as np
-from fastlabelops import overlap_counts, regionprops, relabel_sequential, remove_small_objects
+from fastlabelops import (
+    label_counts,
+    overlap_counts,
+    regionprops,
+    relabel_sequential,
+    remove_small_objects,
+)
 
 labels = np.array(
     [
@@ -29,15 +36,31 @@ labels = np.array(
     dtype=np.uint32,
 )
 
+ids, counts = label_counts(labels)
 relabeled, n = relabel_sequential(labels)
 filtered = remove_small_objects(labels, max_size=1)
 props = regionprops(labels)
 
-a_ids, b_ids, counts = overlap_counts(labels, relabeled)
+a_ids, b_ids, overlap = overlap_counts(labels, relabeled)
 ```
 
 Label `0` is background throughout. Inputs already contain instance IDs; none of these functions
 perform connected-component labeling.
+
+## `label_counts`
+
+```python
+ids, counts = label_counts(labels, include_background=False)
+```
+
+Counts pixels for each observed label ID. IDs are returned in ascending order and counts are
+`uint64`. Background label `0` is excluded by default; use `include_background=True` to include it.
+
+- supports `uint32` and `uint64`
+- arbitrary NumPy dimensionality
+- accepts non-contiguous inputs
+- memory scales with the number of observed labels, not `max(label)`
+- shares the same sparse counting scan used internally by `remove_small_objects`
 
 ## `relabel_sequential`
 
@@ -122,6 +145,27 @@ Correctness is checked before timing. Absolute timings are machine-dependent.
 `fastremap` and StarDist remain optional benchmark competitors. The scripts skip them cleanly
 when they are not installed; the fresh tables below include only competitors available in this run.
 
+### Label counting
+
+```bash
+uv run examples/benchmark_label_counts.py
+# Optional extra competitor:
+uv run --with fastremap examples/benchmark_label_counts.py
+```
+
+The benchmark returns the same sparse `(ids, counts)` output for each method, excludes background,
+and checks correctness against NumPy before timing. The `np.bincount` comparison includes extracting
+only observed IDs, so it produces the same output shape as `label_counts`; it is skipped when
+`max(label)` would require an impractically large dense count array. `fastremap` was not installed
+in this benchmark environment, so it is included by the script but not in the table below.
+
+| Mask | Objects | `fastlabelops` | NumPy `unique` | NumPy `bincount` + extract |
+|---|---:|---:|---:|---:|
+| 1024×1024 | 3,136 | **0.48 ms** | 16.90 ms (35.52×) | 1.65 ms (3.44×) |
+| 2048×2048 | 12,769 | **1.82 ms** | 78.39 ms (43.01×) | 8.97 ms (4.93×) |
+| 4096×4096 | 51,529 | **7.51 ms** | 362.38 ms (48.26×) | 34.99 ms (4.66×) |
+| 2048×2048, sparse IDs up to 472M | 12,769 | **1.85 ms** | 79.87 ms (43.18×) | skipped |
+
 ### Relabeling
 
 ```bash
@@ -187,10 +231,10 @@ the best of repeated runs.
 
 | Mask | Objects | `fastlabelops` | `scikit-image` | Speedup |
 |---|---:|---:|---:|---:|
-| 1024×1024 | 3,136 | **1.00 ms** | 82.45 ms | **82.86×** |
-| 2048×2048 | 12,769 | **3.97 ms** | 343.04 ms | **86.31×** |
-| 4096×4096 | 51,529 | **16.08 ms** | 1525.61 ms | **94.89×** |
-| 2048×2048, sparse IDs | 12,769 | **4.13 ms** | 357.01 ms | **86.44×** |
+| 1024×1024 | 3,136 | **0.79 ms** | 86.43 ms | **109.08×** |
+| 2048×2048 | 12,769 | **2.94 ms** | 350.86 ms | **119.52×** |
+| 4096×4096 | 51,529 | **14.04 ms** | 1494.65 ms | **106.49×** |
+| 2048×2048, sparse IDs | 12,769 | **3.26 ms** | 361.50 ms | **110.74×** |
 
 ## Development
 

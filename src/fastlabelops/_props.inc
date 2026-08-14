@@ -14,8 +14,7 @@ struct RegionStats {
 
 template <typename Label>
 void scan_labels(const Label* data, npy_intp height, npy_intp width, std::vector<RegionStats<Label>>& regions) {
-    std::unordered_map<Label, std::size_t> index;
-    index.reserve(16384);
+    label_map_impl::FlatMap<Label, std::size_t> index;
     regions.reserve(16384);
 
     for (npy_intp row = 0; row < height; ++row) {
@@ -29,7 +28,7 @@ void scan_labels(const Label* data, npy_intp height, npy_intp width, std::vector
                 const uint64_t n = static_cast<uint64_t>(run_end - col);
                 const long double sum_col =
                     (static_cast<long double>(col) + static_cast<long double>(run_end - 1)) * n / 2.0L;
-                auto [it, inserted] = index.try_emplace(label, regions.size());
+                auto [region_index, inserted] = index.get_or_insert(label, regions.size());
                 if (inserted) {
                     RegionStats<Label> r;
                     r.label = label;
@@ -41,7 +40,7 @@ void scan_labels(const Label* data, npy_intp height, npy_intp width, std::vector
                     r.sum_col = sum_col;
                     regions.push_back(r);
                 } else {
-                    auto& r = regions[it->second];
+                    auto& r = regions[*region_index];
                     r.area += n;
                     r.min_row = std::min(r.min_row, row);
                     r.max_row = std::max(r.max_row, row);
