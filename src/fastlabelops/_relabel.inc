@@ -1,89 +1,9 @@
 namespace relabel_impl {
 
-template <typename Label>
-struct Entry {
-    Label key = Label{0};
-    Label value = Label{0};
-};
-
-template <typename Label>
-class FlatMap {
-public:
-    explicit FlatMap(std::size_t initial_capacity = 16384) {
-        std::size_t cap = 16;
-        while (cap < initial_capacity) cap <<= 1;
-        entries_.resize(cap);
-        configure_capacity(cap);
-    }
-
-    inline bool get_or_insert(Label key, Label candidate, Label& value) {
-        std::size_t i = index_for(key);
-        for (;;) {
-            Entry<Label>& e = entries_[i];
-            if (e.key == key) {
-                value = e.value;
-                return false;
-            }
-            if (e.key == Label{0}) {
-                if (size_ >= grow_at_) {
-                    grow();
-                    return get_or_insert(key, candidate, value);
-                }
-                e.key = key;
-                e.value = candidate;
-                value = candidate;
-                ++size_;
-                return true;
-            }
-            i = (i + 1) & mask_;
-        }
-    }
-
-private:
-    inline std::size_t index_for(Label key) const noexcept {
-        constexpr uint64_t kFib = 11400714819323198485ULL;
-        return static_cast<std::size_t>((static_cast<uint64_t>(key) * kFib) >> shift_);
-    }
-
-    inline void insert_no_grow(Label key, Label value) noexcept {
-        std::size_t i = index_for(key);
-        while (entries_[i].key != Label{0}) i = (i + 1) & mask_;
-        entries_[i].key = key;
-        entries_[i].value = value;
-        ++size_;
-    }
-
-    void configure_capacity(std::size_t cap) noexcept {
-        mask_ = cap - 1;
-        unsigned bits = 0;
-        for (std::size_t x = cap; x > 1; x >>= 1) ++bits;
-        shift_ = 64u - bits;
-        grow_at_ = (cap * 7) / 10;
-    }
-
-    void grow() {
-        std::vector<Entry<Label>> old = std::move(entries_);
-        const std::size_t new_cap = old.size() * 2;
-        entries_.clear();
-        entries_.resize(new_cap);
-        configure_capacity(new_cap);
-        size_ = 0;
-        for (const Entry<Label>& e : old) {
-            if (e.key != Label{0}) insert_no_grow(e.key, e.value);
-        }
-    }
-
-    std::vector<Entry<Label>> entries_;
-    std::size_t mask_ = 0;
-    std::size_t size_ = 0;
-    std::size_t grow_at_ = 0;
-    unsigned shift_ = 0;
-};
-
 template <typename Label, bool CheckOverflow>
 bool relabel_kernel(Label* data, std::size_t n, uint64_t offset, std::size_t& count) {
     const uint64_t max_label = static_cast<uint64_t>(std::numeric_limits<Label>::max());
-    FlatMap<Label> map;
+    label_map_impl::FlatMap<Label, Label> map;
     uint64_t next = offset;
     count = 0;
     Label prev_old = Label{0};
@@ -99,9 +19,9 @@ bool relabel_kernel(Label* data, std::size_t n, uint64_t offset, std::size_t& co
 
         if constexpr (CheckOverflow) {
             if (next == max_label) {
-                Label mapped;
-                const bool inserted = map.get_or_insert(old, Label{0}, mapped);
+                auto [mapped_ptr, inserted] = map.get_or_insert(old, Label{0});
                 if (inserted) return false;
+                const Label mapped = *mapped_ptr;
                 data[i] = mapped;
                 prev_old = old;
                 prev_new = mapped;
@@ -109,9 +29,10 @@ bool relabel_kernel(Label* data, std::size_t n, uint64_t offset, std::size_t& co
             }
         }
 
-        Label mapped;
         const Label candidate = static_cast<Label>(next + 1);
-        if (map.get_or_insert(old, candidate, mapped)) {
+        auto [mapped_ptr, inserted] = map.get_or_insert(old, candidate);
+        const Label mapped = *mapped_ptr;
+        if (inserted) {
             ++next;
             ++count;
         }
