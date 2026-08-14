@@ -4,7 +4,7 @@ template <typename Label>
 void accumulate_counts(
     const Label* data,
     std::size_t n,
-    label_map_impl::FlatMap<Label, uint64_t>& counts,
+    label_map_impl::LabelMap<Label, uint64_t>& counts,
     std::vector<Label>* observed_labels = nullptr,
     uint64_t* background_count = nullptr
 ) {
@@ -15,10 +15,14 @@ void accumulate_counts(
         const uint64_t run_length = static_cast<uint64_t>(run_end - i);
 
         if (label == Label{0}) {
-            if (background_count != nullptr) *background_count += run_length;
+            if (background_count != nullptr) {
+                *background_count += run_length;
+            }
         } else {
             auto [count, inserted] = counts.get_or_insert(label, uint64_t{0});
-            if (inserted && observed_labels != nullptr) observed_labels->push_back(label);
+            if (inserted && observed_labels != nullptr) {
+                observed_labels->push_back(label);
+            }
             *count += run_length;
         }
         i = run_end;
@@ -28,7 +32,7 @@ void accumulate_counts(
 template <typename Label>
 PyObject* build_result(
     const std::vector<Label>& labels,
-    const label_map_impl::FlatMap<Label, uint64_t>& counts,
+    const label_map_impl::LabelMap<Label, uint64_t>& counts,
     uint64_t background_count,
     bool include_background,
     int typenum
@@ -76,35 +80,31 @@ PyObject* build_result(
 
 template <typename Label>
 PyObject* dispatch_label_counts(PyArrayObject* arr, bool include_background, int typenum) {
+    const auto* data = reinterpret_cast<const Label*>(PyArray_DATA(arr));
+    const std::size_t n = static_cast<std::size_t>(PyArray_SIZE(arr));
     try {
-        label_map_impl::FlatMap<Label, uint64_t> counts;
+        const std::size_t initial_capacity =
+            std::min(n, label_map_impl::kDefaultInitialCapacity);
+        label_map_impl::LabelMap<Label, uint64_t> counts(initial_capacity);
         std::vector<Label> labels;
-        labels.reserve(std::min<std::size_t>(static_cast<std::size_t>(PyArray_SIZE(arr)), 16384));
         uint64_t background_count = 0;
-        int cpp_error = 0;
 
-        Py_BEGIN_ALLOW_THREADS
-        try {
-            accumulate_counts(
-                reinterpret_cast<const Label*>(PyArray_DATA(arr)),
-                static_cast<std::size_t>(PyArray_SIZE(arr)),
-                counts,
-                &labels,
-                &background_count
-            );
-            std::sort(labels.begin(), labels.end());
-        } catch (const std::bad_alloc&) {
-            cpp_error = 1;
-        } catch (...) {
-            cpp_error = 2;
-        }
-        Py_END_ALLOW_THREADS
+        const bool ok = bindings::run_with_gil_released(
+            [&] {
+                labels.reserve(initial_capacity);
+                accumulate_counts(
+                    data,
+                    n,
+                    counts,
+                    &labels,
+                    include_background ? &background_count : nullptr
+                );
+                std::sort(labels.begin(), labels.end());
+            },
+            "label-counts kernel"
+        );
+        if (!ok) return nullptr;
 
-        if (cpp_error == 1) return PyErr_NoMemory();
-        if (cpp_error == 2) {
-            PyErr_SetString(PyExc_RuntimeError, "unexpected C++ error in label-counts kernel");
-            return nullptr;
-        }
         return build_result(labels, counts, background_count, include_background, typenum);
     } catch (const std::bad_alloc&) {
         return PyErr_NoMemory();
@@ -118,16 +118,10 @@ PyObject* py_label_counts(PyObject*, PyObject* args) {
     PyObject* obj = nullptr;
     int include_background = 0;
     if (!PyArg_ParseTuple(args, "Op:label_counts", &obj, &include_background)) return nullptr;
-    if (!PyArray_Check(obj)) {
-        PyErr_SetString(PyExc_TypeError, "labels must be a NumPy array");
-        return nullptr;
-    }
 
-    auto* arr = reinterpret_cast<PyArrayObject*>(obj);
-    if (!PyArray_ISCARRAY_RO(arr)) {
-        PyErr_SetString(PyExc_ValueError, "labels must be aligned native-endian C-contiguous");
-        return nullptr;
-    }
+    auto* arr = bindings::require_array(obj, "labels");
+    if (arr == nullptr) return nullptr;
+    if (!bindings::require_contiguous(arr, "labels", false)) return nullptr;
 
     const int typenum = PyArray_TYPE(arr);
     if (typenum == NPY_UINT32) {

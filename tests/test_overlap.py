@@ -25,16 +25,16 @@ def assert_matches_reference(a, b, *, include_background=False):
     actual = overlap_counts(a, b, include_background=include_background)
     expected = reference_counts(a, b, include_background=include_background)
     for got, want in zip(actual, expected, strict=True):
-        assert np.array_equal(got, want)
+        np.testing.assert_array_equal(got, want)
 
 
 def test_basic_foreground_overlap():
     a = np.array([[0, 7, 7, 7], [20, 20, 0, 0]], dtype=np.uint32)
     b = np.array([[0, 4, 4, 9], [9, 9, 0, 3]], dtype=np.uint32)
     a_ids, b_ids, counts = overlap_counts(a, b)
-    assert np.array_equal(a_ids, np.array([7, 7, 20], dtype=np.uint32))
-    assert np.array_equal(b_ids, np.array([4, 9, 9], dtype=np.uint32))
-    assert np.array_equal(counts, np.array([2, 1, 2], dtype=np.uint64))
+    np.testing.assert_array_equal(a_ids, np.array([7, 7, 20], dtype=np.uint32))
+    np.testing.assert_array_equal(b_ids, np.array([4, 9, 9], dtype=np.uint32))
+    np.testing.assert_array_equal(counts, np.array([2, 1, 2], dtype=np.uint64))
 
 
 def test_background_can_be_included():
@@ -53,7 +53,11 @@ def test_all_background_is_empty_by_default():
 def test_empty_arrays():
     a = np.empty((0, 4), dtype=np.uint32)
     b = np.empty((0, 4), dtype=np.uint64)
-    assert_matches_reference(a, b)
+    a_ids, b_ids, counts = overlap_counts(a, b)
+    assert a_ids.size == b_ids.size == counts.size == 0
+    assert a_ids.dtype == np.uint32
+    assert b_ids.dtype == np.uint64
+    assert counts.dtype == np.uint64
 
 
 def test_mixed_uint32_uint64_preserves_output_dtypes():
@@ -63,6 +67,12 @@ def test_mixed_uint32_uint64_preserves_output_dtypes():
     assert a_ids.dtype == np.uint32
     assert b_ids.dtype == np.uint64
     assert counts.dtype == np.uint64
+    assert_matches_reference(a, b)
+
+
+def test_mixed_uint64_uint32_dispatch():
+    a = np.array([2**48, 2**48, 9, 9], dtype=np.uint64)
+    b = np.array([3, 3, 4, 5], dtype=np.uint32)
     assert_matches_reference(a, b)
 
 
@@ -122,7 +132,7 @@ def test_repeated_pair_separated_by_background_is_counted_together():
 
 
 def test_requires_numpy_arrays():
-    with pytest.raises(TypeError, match="NumPy arrays"):
+    with pytest.raises(TypeError, match="must be a NumPy array"):
         overlap_counts([1, 2], np.array([1, 2], dtype=np.uint32))  # type: ignore[arg-type]
 
 
@@ -145,8 +155,8 @@ def test_many_unique_pairs_force_hash_growth():
     a = np.arange(1, n + 1, dtype=np.uint32)
     b = np.arange(n, 0, -1, dtype=np.uint32)
     a_ids, b_ids, counts = overlap_counts(a, b)
-    assert np.array_equal(a_ids, a)
-    assert np.array_equal(b_ids, b)
+    np.testing.assert_array_equal(a_ids, a)
+    np.testing.assert_array_equal(b_ids, b)
     assert np.all(counts == 1)
 
 

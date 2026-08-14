@@ -1,15 +1,21 @@
 namespace label_map_impl {
 
+constexpr std::size_t kDefaultInitialCapacity = 16384;
+
 template <typename Key, typename Value>
 struct Entry {
     Key key = Key{0};
     Value value = Value{};
 };
 
+// Label 0 is reserved as the empty-bucket sentinel. All callers skip
+// background labels before insertion.
 template <typename Key, typename Value>
-class FlatMap {
+class LabelMap {
 public:
-    explicit FlatMap(std::size_t initial_capacity = 16384) {
+    static_assert(std::is_unsigned_v<Key>);
+
+    explicit LabelMap(std::size_t initial_capacity = kDefaultInitialCapacity) {
         std::size_t cap = 16;
         while (cap < initial_capacity) cap <<= 1;
         entries_.resize(cap);
@@ -17,6 +23,7 @@ public:
     }
 
     inline std::pair<Value*, bool> get_or_insert(Key key, Value initial) {
+        assert(key != Key{0});
         std::size_t i = index_for(key);
         for (;;) {
             Entry<Key, Value>& e = entries_[i];
@@ -36,6 +43,7 @@ public:
     }
 
     inline const Value* find(Key key) const noexcept {
+        assert(key != Key{0});
         std::size_t i = index_for(key);
         for (;;) {
             const Entry<Key, Value>& e = entries_[i];
@@ -48,7 +56,8 @@ public:
 private:
     inline std::size_t index_for(Key key) const noexcept {
         constexpr uint64_t kFib = 11400714819323198485ULL;
-        return static_cast<std::size_t>((static_cast<uint64_t>(key) * kFib) >> shift_);
+        const uint64_t hash = static_cast<uint64_t>(key) * kFib;
+        return static_cast<std::size_t>(hash >> shift_);
     }
 
     inline void insert_no_grow(Key key, Value value) noexcept {
@@ -68,6 +77,7 @@ private:
     }
 
     void grow() {
+        if (entries_.size() > entries_.max_size() / 2) throw std::bad_alloc();
         std::vector<Entry<Key, Value>> old = std::move(entries_);
         const std::size_t new_cap = old.size() * 2;
         entries_.clear();

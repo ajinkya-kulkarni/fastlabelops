@@ -34,6 +34,8 @@ def test_empty_array():
     ids, counts = label_counts(labels, include_background=True)
     assert ids.size == 0
     assert counts.size == 0
+    assert ids.dtype == np.uint32
+    assert counts.dtype == np.uint64
 
 
 def test_all_background():
@@ -65,6 +67,13 @@ def test_sparse_uint64_ids():
     np.testing.assert_array_equal(counts, [1, 2, 1])
 
 
+def test_high_bit_uint64_ids_force_hash_growth():
+    labels = (np.arange(1, 50_001, dtype=np.uint64) << np.uint64(32)) + 1
+    ids, counts = label_counts(labels)
+    np.testing.assert_array_equal(ids, labels)
+    np.testing.assert_array_equal(counts, np.ones(labels.size, dtype=np.uint64))
+
+
 def test_non_contiguous_input_allowed():
     labels = np.array([[0, 4, 0, 7], [7, 4, 9, 9]], dtype=np.uint32)[:, ::2]
     assert not labels.flags.c_contiguous
@@ -80,7 +89,7 @@ def test_bad_dtype():
 
 def test_requires_numpy_array():
     with pytest.raises(TypeError, match="NumPy array"):
-        label_counts([0, 1, 1])
+        label_counts([0, 1, 1])  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("include_background", [False, True])

@@ -1,3 +1,6 @@
+import inspect
+from collections.abc import Callable
+
 import numpy as np
 
 import fastlabelops
@@ -35,3 +38,16 @@ def test_public_api_and_integration() -> None:
         max_size=1,
     )
     np.testing.assert_array_equal(filtered, [0, 10, 10, 0])
+
+
+def test_options_are_keyword_only() -> None:
+    functions_and_options: dict[Callable[..., object], tuple[str, ...]] = {
+        fastlabelops.label_counts: ("include_background",),
+        fastlabelops.relabel_sequential: ("offset", "in_place"),
+        fastlabelops.remove_small_objects: ("max_size", "in_place"),
+        fastlabelops.overlap_counts: ("include_background",),
+    }
+    for function, option_names in functions_and_options.items():
+        parameters = inspect.signature(function).parameters
+        for name in option_names:
+            assert parameters[name].kind is inspect.Parameter.KEYWORD_ONLY

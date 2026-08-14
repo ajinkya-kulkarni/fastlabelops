@@ -32,21 +32,21 @@ public:
     bool get_or_insert(LabelA a, LabelB b, std::size_t candidate, std::size_t& index) {
         std::size_t i = index_for(a, b);
         for (;;) {
-            Entry<LabelA, LabelB>& e = entries_[i];
-            if (e.output_index_plus_one == 0) {
+            Entry<LabelA, LabelB>& entry = entries_[i];
+            if (entry.output_index_plus_one == 0) {
                 if (size_ >= grow_at_) {
                     grow();
                     return get_or_insert(a, b, candidate, index);
                 }
-                e.a = a;
-                e.b = b;
-                e.output_index_plus_one = candidate + 1;
+                entry.a = a;
+                entry.b = b;
+                entry.output_index_plus_one = candidate + 1;
                 index = candidate;
                 ++size_;
                 return true;
             }
-            if (e.a == a && e.b == b) {
-                index = e.output_index_plus_one - 1;
+            if (entry.a == a && entry.b == b) {
+                index = entry.output_index_plus_one - 1;
                 return false;
             }
             i = (i + 1) & mask_;
@@ -56,7 +56,8 @@ public:
 private:
     std::size_t index_for(LabelA a, LabelB b) const noexcept {
         if constexpr (sizeof(LabelA) == sizeof(uint32_t) && sizeof(LabelB) == sizeof(uint32_t)) {
-            const uint64_t key = (static_cast<uint64_t>(a) << 32) | static_cast<uint64_t>(b);
+            const uint64_t key =
+                (static_cast<uint64_t>(a) << 32) | static_cast<uint64_t>(b);
             return static_cast<std::size_t>(mix64(key) & mask_);
         }
         const uint64_t ha = mix64(static_cast<uint64_t>(a));
@@ -77,14 +78,15 @@ private:
     }
 
     void grow() {
+        if (entries_.size() > entries_.max_size() / 2) throw std::bad_alloc();
         std::vector<Entry<LabelA, LabelB>> old = std::move(entries_);
         const std::size_t new_cap = old.size() * 2;
         entries_.clear();
         entries_.resize(new_cap);
         configure_capacity(new_cap);
         size_ = 0;
-        for (const auto& e : old) {
-            if (e.output_index_plus_one != 0) insert_no_grow(e);
+        for (const auto& entry : old) {
+            if (entry.output_index_plus_one != 0) insert_no_grow(entry);
         }
     }
 
@@ -150,13 +152,30 @@ PyObject* build_result(
     if (counts_obj == nullptr) { Py_DECREF(a_obj); Py_DECREF(b_obj); return nullptr; }
 
     if (size > 0) {
-        std::memcpy(PyArray_DATA(reinterpret_cast<PyArrayObject*>(a_obj)), out_a.data(), out_a.size() * sizeof(LabelA));
-        std::memcpy(PyArray_DATA(reinterpret_cast<PyArrayObject*>(b_obj)), out_b.data(), out_b.size() * sizeof(LabelB));
-        std::memcpy(PyArray_DATA(reinterpret_cast<PyArrayObject*>(counts_obj)), out_counts.data(), out_counts.size() * sizeof(uint64_t));
+        std::memcpy(
+            PyArray_DATA(reinterpret_cast<PyArrayObject*>(a_obj)),
+            out_a.data(),
+            out_a.size() * sizeof(LabelA)
+        );
+        std::memcpy(
+            PyArray_DATA(reinterpret_cast<PyArrayObject*>(b_obj)),
+            out_b.data(),
+            out_b.size() * sizeof(LabelB)
+        );
+        std::memcpy(
+            PyArray_DATA(reinterpret_cast<PyArrayObject*>(counts_obj)),
+            out_counts.data(),
+            out_counts.size() * sizeof(uint64_t)
+        );
     }
 
     PyObject* result = PyTuple_New(3);
-    if (result == nullptr) { Py_DECREF(a_obj); Py_DECREF(b_obj); Py_DECREF(counts_obj); return nullptr; }
+    if (result == nullptr) {
+        Py_DECREF(a_obj);
+        Py_DECREF(b_obj);
+        Py_DECREF(counts_obj);
+        return nullptr;
+    }
     PyTuple_SET_ITEM(result, 0, a_obj);
     PyTuple_SET_ITEM(result, 1, b_obj);
     PyTuple_SET_ITEM(result, 2, counts_obj);
@@ -164,37 +183,26 @@ PyObject* build_result(
 }
 
 template <typename LabelA, typename LabelB>
-PyObject* dispatch_typed(PyArrayObject* a, PyArrayObject* b, bool include_background, int ta, int tb) {
+PyObject* dispatch_typed(
+    PyArrayObject* a,
+    PyArrayObject* b,
+    bool include_background,
+    int typenum_a,
+    int typenum_b
+) {
+    const auto* data_a = reinterpret_cast<const LabelA*>(PyArray_DATA(a));
+    const auto* data_b = reinterpret_cast<const LabelB*>(PyArray_DATA(b));
     const std::size_t n = static_cast<std::size_t>(PyArray_SIZE(a));
     std::vector<LabelA> out_a;
     std::vector<LabelB> out_b;
     std::vector<uint64_t> counts;
-    int cpp_error = 0;
 
-    Py_BEGIN_ALLOW_THREADS
-    try {
-        count_pairs(
-            reinterpret_cast<const LabelA*>(PyArray_DATA(a)),
-            reinterpret_cast<const LabelB*>(PyArray_DATA(b)),
-            n,
-            include_background,
-            out_a,
-            out_b,
-            counts
-        );
-    } catch (const std::bad_alloc&) {
-        cpp_error = 1;
-    } catch (...) {
-        cpp_error = 2;
-    }
-    Py_END_ALLOW_THREADS
-
-    if (cpp_error == 1) return PyErr_NoMemory();
-    if (cpp_error == 2) {
-        PyErr_SetString(PyExc_RuntimeError, "unexpected C++ error in overlap kernel");
-        return nullptr;
-    }
-    return build_result(out_a, out_b, counts, ta, tb);
+    const bool ok = bindings::run_with_gil_released(
+        [&] { count_pairs(data_a, data_b, n, include_background, out_a, out_b, counts); },
+        "overlap kernel"
+    );
+    if (!ok) return nullptr;
+    return build_result(out_a, out_b, counts, typenum_a, typenum_b);
 }
 
 bool same_shape(PyArrayObject* a, PyArrayObject* b) noexcept {
@@ -210,18 +218,17 @@ PyObject* py_overlap_counts(PyObject*, PyObject* args) {
     PyObject* obj_a = nullptr;
     PyObject* obj_b = nullptr;
     int include_background = 0;
-    if (!PyArg_ParseTuple(args, "OOp:overlap_counts", &obj_a, &obj_b, &include_background)) return nullptr;
-    if (!PyArray_Check(obj_a) || !PyArray_Check(obj_b)) {
-        PyErr_SetString(PyExc_TypeError, "labels_a and labels_b must be NumPy arrays");
+    if (!PyArg_ParseTuple(args, "OOp:overlap_counts", &obj_a, &obj_b, &include_background)) {
         return nullptr;
     }
 
-    auto* a = reinterpret_cast<PyArrayObject*>(obj_a);
-    auto* b = reinterpret_cast<PyArrayObject*>(obj_b);
-    if (!PyArray_ISCARRAY_RO(a) || !PyArray_ISCARRAY_RO(b)) {
-        PyErr_SetString(PyExc_ValueError, "arrays must be aligned native-endian C-contiguous arrays");
-        return nullptr;
-    }
+    auto* a = bindings::require_array(obj_a, "labels_a");
+    if (a == nullptr) return nullptr;
+    auto* b = bindings::require_array(obj_b, "labels_b");
+    if (b == nullptr) return nullptr;
+
+    if (!bindings::require_contiguous(a, "labels_a", false)) return nullptr;
+    if (!bindings::require_contiguous(b, "labels_b", false)) return nullptr;
     if (!same_shape(a, b)) {
         PyErr_SetString(PyExc_ValueError, "labels_a and labels_b must have the same shape");
         return nullptr;
@@ -229,17 +236,23 @@ PyObject* py_overlap_counts(PyObject*, PyObject* args) {
 
     const int ta = PyArray_TYPE(a);
     const int tb = PyArray_TYPE(b);
-    const bool a_ok = ta == NPY_UINT32 || ta == NPY_UINT64;
-    const bool b_ok = tb == NPY_UINT32 || tb == NPY_UINT64;
-    if (!a_ok || !b_ok) {
-        PyErr_SetString(PyExc_TypeError, "dtypes must be uint32 or uint64");
+    if ((ta != NPY_UINT32 && ta != NPY_UINT64) ||
+        (tb != NPY_UINT32 && tb != NPY_UINT64)) {
+        PyErr_SetString(PyExc_TypeError, "labels_a and labels_b dtypes must be uint32 or uint64");
         return nullptr;
     }
 
-    if (ta == NPY_UINT32 && tb == NPY_UINT32) return dispatch_typed<uint32_t, uint32_t>(a, b, include_background != 0, ta, tb);
-    if (ta == NPY_UINT32 && tb == NPY_UINT64) return dispatch_typed<uint32_t, uint64_t>(a, b, include_background != 0, ta, tb);
-    if (ta == NPY_UINT64 && tb == NPY_UINT32) return dispatch_typed<uint64_t, uint32_t>(a, b, include_background != 0, ta, tb);
-    return dispatch_typed<uint64_t, uint64_t>(a, b, include_background != 0, ta, tb);
+    const bool include_bg = include_background != 0;
+    if (ta == NPY_UINT32 && tb == NPY_UINT32) {
+        return dispatch_typed<uint32_t, uint32_t>(a, b, include_bg, ta, tb);
+    }
+    if (ta == NPY_UINT32 && tb == NPY_UINT64) {
+        return dispatch_typed<uint32_t, uint64_t>(a, b, include_bg, ta, tb);
+    }
+    if (ta == NPY_UINT64 && tb == NPY_UINT32) {
+        return dispatch_typed<uint64_t, uint32_t>(a, b, include_bg, ta, tb);
+    }
+    return dispatch_typed<uint64_t, uint64_t>(a, b, include_bg, ta, tb);
 }
 
 }  // namespace overlap_impl
