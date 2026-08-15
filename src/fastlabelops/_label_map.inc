@@ -78,6 +78,9 @@ public:
 
 private:
     inline std::size_t index_for(Key key) const noexcept {
+        if constexpr (std::is_same_v<Key, uint32_t>) {
+            if (key <= mask_) return static_cast<std::size_t>(key);
+        }
         constexpr uint64_t kFib = 11400714819323198485ULL;
         const uint64_t hash = static_cast<uint64_t>(key) * kFib;
         return static_cast<std::size_t>(hash >> shift_);

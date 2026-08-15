@@ -51,3 +51,23 @@ def test_options_are_keyword_only() -> None:
         parameters = inspect.signature(function).parameters
         for name in option_names:
             assert parameters[name].kind is inspect.Parameter.KEYWORD_ONLY
+
+
+def test_compact_and_sparse_labels_share_all_single_label_operations() -> None:
+    high = np.uint32(4_000_000_000)
+    labels = np.array([[0, 1, high], [high, 2, 1]], dtype=np.uint32)
+
+    ids, counts = fastlabelops.label_counts(labels)
+    np.testing.assert_array_equal(ids, [1, 2, high])
+    np.testing.assert_array_equal(counts, [2, 1, 2])
+
+    relabeled, n = fastlabelops.relabel_sequential(labels)
+    np.testing.assert_array_equal(relabeled, [[0, 1, 2], [2, 3, 1]])
+    assert n == 3
+
+    filtered = fastlabelops.remove_small_objects(labels, max_size=1)
+    np.testing.assert_array_equal(filtered, [[0, 1, high], [high, 0, 1]])
+
+    props = fastlabelops.regionprops(labels)
+    np.testing.assert_array_equal(props["label"], [1, 2, high])
+    np.testing.assert_array_equal(props["area"], [2, 1, 2])
