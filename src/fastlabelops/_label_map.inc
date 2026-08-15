@@ -69,6 +69,13 @@ public:
         }
     }
 
+    template <typename Func>
+    void for_each(Func&& func) const {
+        for (const Entry<Key, Value>& entry : entries_) {
+            if (entry.key != Key{0}) func(entry.key, entry.value);
+        }
+    }
+
 private:
     inline std::size_t index_for(Key key) const noexcept {
         constexpr uint64_t kFib = 11400714819323198485ULL;
