@@ -9,7 +9,7 @@ void remove_small_kernel(Label* data, std::size_t n, uint64_t max_size) {
     }
 
     label_map_impl::LabelMap<Label, uint64_t> counts(
-        std::min(n, label_map_impl::kDefaultInitialCapacity)
+        std::min(n, label_map_impl::kInitialReserveLimit)
     );
     count_impl::accumulate_counts(data, n, counts);
 

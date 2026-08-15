@@ -73,27 +73,55 @@ def test_compact_and_sparse_labels_share_all_single_label_operations() -> None:
     np.testing.assert_array_equal(props["area"], [2, 1, 2])
 
 
-def test_uint32_direct_buckets_survive_growth_and_sparse_fallback() -> None:
-    labels = np.arange(1, 50_001, dtype=np.uint32).reshape(200, 250)
-    labels[-1, -1] = 4_000_000_000
-    expected_ids = np.concatenate(
-        [np.arange(1, 50_000, dtype=np.uint32), np.array([4_000_000_000], dtype=np.uint32)]
+def test_fragmented_compact_and_sparse_labels_across_growth() -> None:
+    # This ID hashes into the compact range, covering the former long-probe regression.
+    sparse = np.uint32(4_000_027_670)
+    dense_prefix_size = 16_000
+    compact_label_count = 30_000
+    sparse_output_label = dense_prefix_size + 1
+    repeats = 128
+    flat = np.concatenate(
+        [
+            np.arange(1, dense_prefix_size + 1, dtype=np.uint32),
+            np.array([sparse], dtype=np.uint32),
+            np.arange(dense_prefix_size + 1, compact_label_count + 1, dtype=np.uint32),
+            np.tile(np.array([sparse, 1], dtype=np.uint32), repeats),
+        ]
     )
+    labels = flat.reshape(1, -1)
+    expected_ids = np.concatenate(
+        [
+            np.arange(1, compact_label_count + 1, dtype=np.uint32),
+            np.array([sparse], dtype=np.uint32),
+        ]
+    )
+    expected_counts = np.ones(compact_label_count + 1, dtype=np.uint64)
+    expected_counts[0] = repeats + 1
+    expected_counts[-1] = repeats + 1
 
     ids, counts = fastlabelops.label_counts(labels)
     np.testing.assert_array_equal(ids, expected_ids)
-    np.testing.assert_array_equal(counts, np.ones(50_000, dtype=np.uint64))
+    np.testing.assert_array_equal(counts, expected_counts)
 
     relabeled, n = fastlabelops.relabel_sequential(labels)
-    np.testing.assert_array_equal(
-        relabeled,
-        np.arange(1, 50_001, dtype=np.uint32).reshape(labels.shape),
+    expected_relabeled = np.concatenate(
+        [
+            np.arange(1, dense_prefix_size + 1, dtype=np.uint32),
+            np.array([sparse_output_label], dtype=np.uint32),
+            np.arange(sparse_output_label + 1, compact_label_count + 2, dtype=np.uint32),
+            np.tile(np.array([sparse_output_label, 1], dtype=np.uint32), repeats),
+        ]
     )
-    assert n == 50_000
+    np.testing.assert_array_equal(relabeled, expected_relabeled.reshape(labels.shape))
+    assert n == compact_label_count + 1
 
     filtered = fastlabelops.remove_small_objects(labels, max_size=1)
-    np.testing.assert_array_equal(filtered, np.zeros_like(labels))
+    expected_filtered = np.zeros_like(flat)
+    expected_filtered[0] = 1
+    expected_filtered[dense_prefix_size] = sparse
+    expected_filtered[-2 * repeats :] = np.tile(np.array([sparse, 1], dtype=np.uint32), repeats)
+    np.testing.assert_array_equal(filtered, expected_filtered.reshape(labels.shape))
 
     props = fastlabelops.regionprops(labels)
     np.testing.assert_array_equal(props["label"], expected_ids)
-    np.testing.assert_array_equal(props["area"], np.ones(50_000, dtype=np.int64))
+    np.testing.assert_array_equal(props["area"], expected_counts)

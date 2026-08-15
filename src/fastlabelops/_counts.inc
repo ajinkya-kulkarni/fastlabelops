@@ -83,15 +83,15 @@ PyObject* dispatch_label_counts(PyArrayObject* arr, bool include_background, int
     const auto* data = reinterpret_cast<const Label*>(PyArray_DATA(arr));
     const std::size_t n = static_cast<std::size_t>(PyArray_SIZE(arr));
     try {
-        const std::size_t initial_capacity =
-            std::min(n, label_map_impl::kDefaultInitialCapacity);
-        label_map_impl::LabelMap<Label, uint64_t> counts(initial_capacity);
+        const std::size_t expected_entries =
+            std::min(n, label_map_impl::kInitialReserveLimit);
+        label_map_impl::LabelMap<Label, uint64_t> counts(expected_entries);
         std::vector<Label> labels;
         uint64_t background_count = 0;
 
         const bool ok = bindings::run_with_gil_released(
             [&] {
-                labels.reserve(initial_capacity);
+                labels.reserve(expected_entries);
                 accumulate_counts(
                     data,
                     n,

@@ -4,7 +4,7 @@ template <typename Label, bool CheckOverflow>
 bool relabel_kernel(Label* data, std::size_t n, uint64_t offset, std::size_t& count) {
     const uint64_t max_label = static_cast<uint64_t>(std::numeric_limits<Label>::max());
     label_map_impl::LabelMap<Label, Label> map(
-        std::min(n, label_map_impl::kDefaultInitialCapacity)
+        std::min(n, label_map_impl::kInitialReserveLimit)
     );
     uint64_t next = offset;
     count = 0;

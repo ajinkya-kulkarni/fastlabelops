@@ -1,5 +1,9 @@
 namespace overlap_impl {
 
+constexpr uint64_t kSecondLabelHashSalt = 0xd6e8feb86659fd93ULL;
+constexpr unsigned kPairHashRotation = 29;
+
+// SplitMix64 mixing function.
 inline uint64_t mix64(uint64_t x) noexcept {
     x += 0x9e3779b97f4a7c15ULL;
     x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
@@ -22,7 +26,8 @@ template <typename LabelA, typename LabelB>
 class PairMap {
 public:
     explicit PairMap(std::size_t input_size) {
-        const std::size_t expected = std::min<std::size_t>(input_size, 16384);
+        const std::size_t expected =
+            std::min(input_size, label_map_impl::kInitialReserveLimit);
         const std::size_t cap =
             label_map_impl::bucket_count_for_expected_entries(expected);
         entries_.resize(cap);
@@ -61,8 +66,8 @@ private:
             return static_cast<std::size_t>(mix64(key) & mask_);
         }
         const uint64_t ha = mix64(static_cast<uint64_t>(a));
-        const uint64_t hb = mix64(static_cast<uint64_t>(b) ^ 0xd6e8feb86659fd93ULL);
-        return static_cast<std::size_t>((ha ^ rotl64(hb, 29)) & mask_);
+        const uint64_t hb = mix64(static_cast<uint64_t>(b) ^ kSecondLabelHashSalt);
+        return static_cast<std::size_t>((ha ^ rotl64(hb, kPairHashRotation)) & mask_);
     }
 
     void insert_no_grow(const Entry<LabelA, LabelB>& old) noexcept {
@@ -107,7 +112,7 @@ void count_pairs(
     std::vector<uint64_t>& out_counts
 ) {
     PairMap<LabelA, LabelB> map(n);
-    const std::size_t reserve_n = std::min<std::size_t>(n, 16384);
+    const std::size_t reserve_n = std::min(n, label_map_impl::kInitialReserveLimit);
     out_a.reserve(reserve_n);
     out_b.reserve(reserve_n);
     out_counts.reserve(reserve_n);

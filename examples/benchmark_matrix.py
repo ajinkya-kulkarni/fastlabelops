@@ -184,7 +184,7 @@ def _build_benchmarks() -> list[Benchmark]:
     return benchmarks
 
 
-def _validate_api() -> None:
+def _smoke_check_api() -> None:
     high = np.uint64(2**63)
     labels = np.array(
         [
@@ -276,7 +276,7 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
-    _validate_api()
+    _smoke_check_api()
     benchmarks = _build_benchmarks()
     if args.filter:
         benchmarks = [
@@ -304,7 +304,7 @@ def main() -> None:
                         "python": sys.version.split()[0],
                         "numpy": np.__version__,
                         "repeats": args.repeats,
-                        "validated": True,
+                        "api_smoke_checked": True,
                         "warmups": args.warmups,
                     },
                     "benchmarks_ms": timings,
