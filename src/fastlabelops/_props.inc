@@ -67,7 +67,10 @@ void scan_labels(
             col = run_end;
         }
     }
-    std::sort(regions.begin(), regions.end(), [](const auto& a, const auto& b) { return a.label < b.label; });
+    const auto ordered_by_label = [](const auto& a, const auto& b) { return a.label < b.label; };
+    if (!std::is_sorted(regions.begin(), regions.end(), ordered_by_label)) {
+        std::sort(regions.begin(), regions.end(), ordered_by_label);
+    }
 }
 
 template <typename Label>

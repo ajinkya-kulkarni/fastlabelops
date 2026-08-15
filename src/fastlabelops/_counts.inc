@@ -99,7 +99,9 @@ PyObject* dispatch_label_counts(PyArrayObject* arr, bool include_background, int
                     &labels,
                     include_background ? &background_count : nullptr
                 );
-                std::sort(labels.begin(), labels.end());
+                if (!std::is_sorted(labels.begin(), labels.end())) {
+                    std::sort(labels.begin(), labels.end());
+                }
             },
             "label-counts kernel"
         );
