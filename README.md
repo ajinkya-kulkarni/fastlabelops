@@ -141,15 +141,15 @@ Rows are sorted by ascending label. Bounding boxes use
 
 Fresh CPU-only benchmark run for the current package on a MacBook Air with an Apple M3
 (8 CPU cores: 4 performance and 4 efficiency), 16 GB RAM, macOS 14.8.7 arm64,
-Python 3.12.13, NumPy 2.5.2, and scikit-image 0.26.0. Correctness is checked before
-timing. Absolute timings are machine-dependent.
+Python 3.12.13, NumPy 2.5.2, and scikit-image 0.26.0. Representative correctness
+checks run before timing. Absolute timings are machine-dependent.
 
 Each suite was launched twice; relabeling was launched three times after cooling because its
 268 MB cases showed more thermal variance on the fanless MacBook Air. Tables use the best observed
 timing for best-based scripts and the lower observed median for overlap. Ratios are calculated from
 the displayed timings.
 
-The dependency-free workload matrix validates every public operation before timing and covers
+The dependency-free workload matrix smoke-checks every public operation before timing and covers
 blocky, fragmented, sparse-ID, high-cardinality, all-background, strided, and mixed-removal cases:
 
 ```bash

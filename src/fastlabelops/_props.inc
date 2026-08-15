@@ -20,10 +20,10 @@ void scan_labels(
     std::size_t size,
     std::vector<RegionStats<Label>>& regions
 ) {
-    const std::size_t initial_capacity =
-        std::min(size, label_map_impl::kDefaultInitialCapacity);
-    label_map_impl::LabelMap<Label, std::size_t> index(initial_capacity);
-    regions.reserve(initial_capacity);
+    const std::size_t expected_entries =
+        std::min(size, label_map_impl::kInitialReserveLimit);
+    label_map_impl::LabelMap<Label, std::size_t> index(expected_entries);
+    regions.reserve(expected_entries);
 
     for (npy_intp row = 0; row < height; ++row) {
         const Label* row_data = data + row * width;

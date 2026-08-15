@@ -1,6 +1,7 @@
 namespace label_map_impl {
 
-constexpr std::size_t kDefaultInitialCapacity = 16384;
+constexpr std::size_t kInitialReserveLimit = 16384;
+constexpr std::size_t kMinimumBucketCount = 16;
 constexpr std::size_t kLoadNumerator = 7;
 constexpr std::size_t kLoadDenominator = 10;
 
@@ -12,7 +13,7 @@ inline std::size_t growth_threshold(std::size_t bucket_count) noexcept {
 }
 
 inline std::size_t bucket_count_for_expected_entries(std::size_t expected_entries) {
-    std::size_t bucket_count = 16;
+    std::size_t bucket_count = kMinimumBucketCount;
     while (growth_threshold(bucket_count) < expected_entries) {
         if (bucket_count > std::numeric_limits<std::size_t>::max() / 2) {
             throw std::bad_alloc();
@@ -35,7 +36,7 @@ class LabelMap {
 public:
     static_assert(std::is_unsigned_v<Key>);
 
-    explicit LabelMap(std::size_t expected_entries = kDefaultInitialCapacity) {
+    explicit LabelMap(std::size_t expected_entries = kInitialReserveLimit) {
         const std::size_t cap = bucket_count_for_expected_entries(expected_entries);
         entries_.resize(cap);
         configure_capacity(cap);
@@ -44,6 +45,7 @@ public:
     inline std::pair<Value*, bool> get_or_insert(Key key, Value initial) {
         assert(key != Key{0});
         std::size_t i = index_for(key);
+        std::size_t step = 0;
         for (;;) {
             Entry<Key, Value>& e = entries_[i];
             if (e.key == key) return {&e.value, false};
@@ -57,18 +59,21 @@ public:
                 ++size_;
                 return {&e.value, true};
             }
-            i = (i + 1) & mask_;
+            if (step == 0) step = probe_step(key);
+            i = (i + step) & mask_;
         }
     }
 
     inline const Value* find(Key key) const noexcept {
         assert(key != Key{0});
         std::size_t i = index_for(key);
+        std::size_t step = 0;
         for (;;) {
             const Entry<Key, Value>& e = entries_[i];
             if (e.key == key) return &e.value;
             if (e.key == Key{0}) return nullptr;
-            i = (i + 1) & mask_;
+            if (step == 0) step = probe_step(key);
+            i = (i + step) & mask_;
         }
     }
 
@@ -80,18 +85,31 @@ public:
     }
 
 private:
+    static inline uint64_t hash_for(Key key) noexcept {
+        constexpr uint64_t kFib = 11400714819323198485ULL;
+        return static_cast<uint64_t>(key) * kFib;
+    }
+
     inline std::size_t index_for(Key key) const noexcept {
         if constexpr (std::is_same_v<Key, uint32_t>) {
             if (key <= mask_) return static_cast<std::size_t>(key);
         }
-        constexpr uint64_t kFib = 11400714819323198485ULL;
-        const uint64_t hash = static_cast<uint64_t>(key) * kFib;
-        return static_cast<std::size_t>(hash >> shift_);
+        return static_cast<std::size_t>(hash_for(key) >> shift_);
+    }
+
+    inline std::size_t probe_step(Key key) const noexcept {
+        // Odd steps visit every bucket in a power-of-two table and avoid
+        // linear scans through dense ranges of directly indexed labels.
+        return (static_cast<std::size_t>(hash_for(key)) & mask_) | 1;
     }
 
     inline void insert_no_grow(Key key, Value value) noexcept {
         std::size_t i = index_for(key);
-        while (entries_[i].key != Key{0}) i = (i + 1) & mask_;
+        std::size_t step = 0;
+        while (entries_[i].key != Key{0}) {
+            if (step == 0) step = probe_step(key);
+            i = (i + step) & mask_;
+        }
         entries_[i].key = key;
         entries_[i].value = value;
         ++size_;

@@ -39,22 +39,23 @@ inline bool require_contiguous(PyArrayObject* arr, const char* name, bool writab
 
 template <typename Func>
 bool run_with_gil_released(Func&& func, const char* context) {
-    int cpp_error = 0;
+    enum class CppError { none, bad_alloc, unexpected };
+    CppError cpp_error = CppError::none;
     Py_BEGIN_ALLOW_THREADS
     try {
         func();
     } catch (const std::bad_alloc&) {
-        cpp_error = 1;
+        cpp_error = CppError::bad_alloc;
     } catch (...) {
-        cpp_error = 2;
+        cpp_error = CppError::unexpected;
     }
     Py_END_ALLOW_THREADS
 
-    if (cpp_error == 1) {
+    if (cpp_error == CppError::bad_alloc) {
         PyErr_NoMemory();
         return false;
     }
-    if (cpp_error == 2) {
+    if (cpp_error == CppError::unexpected) {
         PyErr_Format(PyExc_RuntimeError, "unexpected C++ error in %s", context);
         return false;
     }
