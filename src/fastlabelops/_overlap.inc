@@ -23,8 +23,8 @@ class PairMap {
 public:
     explicit PairMap(std::size_t input_size) {
         const std::size_t expected = std::min<std::size_t>(input_size, 16384);
-        std::size_t cap = 16;
-        while ((cap * 7) / 10 < expected) cap <<= 1;
+        const std::size_t cap =
+            label_map_impl::bucket_count_for_expected_entries(expected);
         entries_.resize(cap);
         configure_capacity(cap);
     }
@@ -74,7 +74,7 @@ private:
 
     void configure_capacity(std::size_t cap) noexcept {
         mask_ = cap - 1;
-        grow_at_ = (cap * 7) / 10;
+        grow_at_ = label_map_impl::growth_threshold(cap);
     }
 
     void grow() {

@@ -1,6 +1,23 @@
 namespace label_map_impl {
 
 constexpr std::size_t kDefaultInitialCapacity = 16384;
+constexpr std::size_t kLoadNumerator = 7;
+constexpr std::size_t kLoadDenominator = 10;
+
+inline std::size_t growth_threshold(std::size_t bucket_count) noexcept {
+    return (bucket_count * kLoadNumerator) / kLoadDenominator;
+}
+
+inline std::size_t bucket_count_for_expected_entries(std::size_t expected_entries) {
+    std::size_t bucket_count = 16;
+    while (growth_threshold(bucket_count) < expected_entries) {
+        if (bucket_count > std::numeric_limits<std::size_t>::max() / 2) {
+            throw std::bad_alloc();
+        }
+        bucket_count <<= 1;
+    }
+    return bucket_count;
+}
 
 template <typename Key, typename Value>
 struct Entry {
@@ -15,9 +32,8 @@ class LabelMap {
 public:
     static_assert(std::is_unsigned_v<Key>);
 
-    explicit LabelMap(std::size_t initial_capacity = kDefaultInitialCapacity) {
-        std::size_t cap = 16;
-        while (cap < initial_capacity) cap <<= 1;
+    explicit LabelMap(std::size_t expected_entries = kDefaultInitialCapacity) {
+        const std::size_t cap = bucket_count_for_expected_entries(expected_entries);
         entries_.resize(cap);
         configure_capacity(cap);
     }
@@ -73,7 +89,7 @@ private:
         unsigned bits = 0;
         for (std::size_t x = cap; x > 1; x >>= 1) ++bits;
         shift_ = 64u - bits;
-        grow_at_ = (cap * 7) / 10;
+        grow_at_ = growth_threshold(cap);
     }
 
     void grow() {
