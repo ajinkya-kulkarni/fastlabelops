@@ -5,7 +5,10 @@ constexpr std::size_t kLoadNumerator = 7;
 constexpr std::size_t kLoadDenominator = 10;
 
 inline std::size_t growth_threshold(std::size_t bucket_count) noexcept {
-    return (bucket_count * kLoadNumerator) / kLoadDenominator;
+    const std::size_t whole = (bucket_count / kLoadDenominator) * kLoadNumerator;
+    const std::size_t remainder =
+        ((bucket_count % kLoadDenominator) * kLoadNumerator) / kLoadDenominator;
+    return whole + remainder;
 }
 
 inline std::size_t bucket_count_for_expected_entries(std::size_t expected_entries) {
