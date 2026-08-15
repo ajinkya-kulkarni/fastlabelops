@@ -10,7 +10,6 @@ import platform
 import statistics
 import sys
 import time
-from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -185,6 +184,42 @@ def _build_benchmarks() -> list[Benchmark]:
     return benchmarks
 
 
+def _validate_api() -> None:
+    high = np.uint64(2**63)
+    labels = np.array(
+        [
+            [0, 7, 7, 0],
+            [3, 0, 7, high],
+            [3, 0, 0, 0],
+        ],
+        dtype=np.uint64,
+    )
+
+    ids, counts = label_counts(labels)
+    np.testing.assert_array_equal(ids, [3, 7, high])
+    np.testing.assert_array_equal(counts, [2, 3, 1])
+
+    relabeled, n = relabel_sequential(labels)
+    np.testing.assert_array_equal(relabeled, [[0, 1, 1, 0], [2, 0, 1, 3], [2, 0, 0, 0]])
+    assert n == 3
+
+    filtered = remove_small_objects(labels, max_size=1)
+    np.testing.assert_array_equal(filtered, [[0, 7, 7, 0], [3, 0, 7, 0], [3, 0, 0, 0]])
+
+    a_ids, b_ids, overlaps = overlap_counts(labels, relabeled, include_background=True)
+    np.testing.assert_array_equal(a_ids, [0, 7, 3, high])
+    np.testing.assert_array_equal(b_ids, [0, 1, 2, 3])
+    np.testing.assert_array_equal(overlaps, [6, 3, 2, 1])
+
+    props = regionprops(labels)
+    np.testing.assert_array_equal(props["label"], [3, 7, high])
+    np.testing.assert_array_equal(props["area"], [2, 3, 1])
+    np.testing.assert_array_equal(props["bbox"], [[1, 0, 3, 1], [0, 1, 2, 3], [1, 3, 2, 4]])
+    expected_centroids = np.array([[1.5, 0], [1 / 3, 5 / 3], [1, 3]], dtype=np.float64)
+    np.testing.assert_allclose(props["centroid"], expected_centroids)
+    np.testing.assert_array_equal(props["area_bbox"], [2, 4, 1])
+
+
 def _measure(benchmark: Benchmark, *, repeats: int, warmups: int) -> float:
     for _ in range(warmups):
         benchmark.prepare()
@@ -209,6 +244,19 @@ def _measure(benchmark: Benchmark, *, repeats: int, warmups: int) -> float:
     return statistics.median(times)
 
 
+def _operation_score(operation: str, timings: dict[str, float]) -> float:
+    selected = [(name, elapsed) for name, elapsed in timings.items() if name.startswith(operation)]
+    if operation != "remove_small_objects":
+        return statistics.geometric_mean(elapsed for _, elapsed in selected)
+
+    outcome_scores = []
+    for mixed in (False, True):
+        values = [elapsed for name, elapsed in selected if ("/mixed-removal" in name) is mixed]
+        if values:
+            outcome_scores.append(statistics.geometric_mean(values))
+    return statistics.geometric_mean(outcome_scores)
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repeats", type=int, default=7)
@@ -228,6 +276,7 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
+    _validate_api()
     benchmarks = _build_benchmarks()
     if args.filter:
         benchmarks = [
@@ -242,13 +291,8 @@ def main() -> None:
         benchmark.name: _measure(benchmark, repeats=args.repeats, warmups=args.warmups)
         for benchmark in benchmarks
     }
-    grouped: dict[str, list[float]] = defaultdict(list)
-    for name, elapsed in timings.items():
-        grouped[name.split("/", 1)[0]].append(elapsed)
-    operation_scores = {
-        operation: statistics.geometric_mean(values)
-        for operation, values in sorted(grouped.items())
-    }
+    operations = sorted({name.split("/", 1)[0] for name in timings})
+    operation_scores = {operation: _operation_score(operation, timings) for operation in operations}
     overall_score = statistics.geometric_mean(operation_scores.values())
 
     if args.json:
@@ -260,6 +304,7 @@ def main() -> None:
                         "python": sys.version.split()[0],
                         "numpy": np.__version__,
                         "repeats": args.repeats,
+                        "validated": True,
                         "warmups": args.warmups,
                     },
                     "benchmarks_ms": timings,
@@ -278,7 +323,7 @@ def main() -> None:
     width = max(len(name) for name in timings)
     for name, elapsed in timings.items():
         print(f"{name:{width}s}  {elapsed:9.3f} ms")
-    print("\nEqual-weight operation scores")
+    print("\nEqual-weight operation scores (removal outcomes balanced)")
     for operation, elapsed in operation_scores.items():
         print(f"{operation:24s}  {elapsed:9.3f} ms")
     print(f"{'overall':24s}  {overall_score:9.3f} ms")

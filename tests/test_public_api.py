@@ -71,3 +71,29 @@ def test_compact_and_sparse_labels_share_all_single_label_operations() -> None:
     props = fastlabelops.regionprops(labels)
     np.testing.assert_array_equal(props["label"], [1, 2, high])
     np.testing.assert_array_equal(props["area"], [2, 1, 2])
+
+
+def test_uint32_direct_buckets_survive_growth_and_sparse_fallback() -> None:
+    labels = np.arange(1, 50_001, dtype=np.uint32).reshape(200, 250)
+    labels[-1, -1] = 4_000_000_000
+    expected_ids = np.concatenate(
+        [np.arange(1, 50_000, dtype=np.uint32), np.array([4_000_000_000], dtype=np.uint32)]
+    )
+
+    ids, counts = fastlabelops.label_counts(labels)
+    np.testing.assert_array_equal(ids, expected_ids)
+    np.testing.assert_array_equal(counts, np.ones(50_000, dtype=np.uint64))
+
+    relabeled, n = fastlabelops.relabel_sequential(labels)
+    np.testing.assert_array_equal(
+        relabeled,
+        np.arange(1, 50_001, dtype=np.uint32).reshape(labels.shape),
+    )
+    assert n == 50_000
+
+    filtered = fastlabelops.remove_small_objects(labels, max_size=1)
+    np.testing.assert_array_equal(filtered, np.zeros_like(labels))
+
+    props = fastlabelops.regionprops(labels)
+    np.testing.assert_array_equal(props["label"], expected_ids)
+    np.testing.assert_array_equal(props["area"], np.ones(50_000, dtype=np.int64))
