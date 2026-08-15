@@ -13,6 +13,18 @@ void remove_small_kernel(Label* data, std::size_t n, uint64_t max_size) {
     );
     count_impl::accumulate_counts(data, n, counts);
 
+    bool remove_any = false;
+    bool keep_any = false;
+    counts.for_each([&](Label, uint64_t count) {
+        remove_any = remove_any || count <= max_size;
+        keep_any = keep_any || count > max_size;
+    });
+    if (!remove_any) return;
+    if (!keep_any) {
+        std::fill(data, data + n, Label{0});
+        return;
+    }
+
     for (std::size_t i = 0; i < n;) {
         const Label label = data[i];
         std::size_t run_end = i + 1;
