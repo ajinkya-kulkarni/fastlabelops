@@ -9,7 +9,7 @@ description = "Fast CPU operations for integer instance masks"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"
-dependencies = ["numpy>=1.26"]
+dependencies = ["numpy>=2.0"]
 
 [project.urls]
 Repository = "https://github.com/ajinkya-kulkarni/fastlabelops"
@@ -18,10 +18,13 @@ Issues = "https://github.com/ajinkya-kulkarni/fastlabelops/issues"
 [dependency-groups]
 dev = [
     "build>=1.2",
+    "fastremap>=1.15",
     "mypy>=2.1.0",
     "pre-commit>=4.6.0",
     "pytest>=9.1.1",
     "ruff>=0.15.20",
+    "scikit-image>=0.24",
+    "scipy>=1.13",
     "setuptools>=84.0.0",
 ]
 

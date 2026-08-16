@@ -6,6 +6,7 @@ import statistics
 import sys
 import time
 from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import skimage
@@ -16,9 +17,9 @@ try:
     from stardist.matching import _label_overlap
     from stardist.matching import relabel_sequential as sd_relabel
 except ImportError:
-    stardist = None
-    _label_overlap = None
-    sd_relabel = None
+    stardist: Any | None = None  # type: ignore[no-redef]
+    _label_overlap: Any | None = None  # type: ignore[no-redef]
+    sd_relabel: Any | None = None  # type: ignore[no-redef]
 
 from fastlabelops import overlap_counts
 from fastlabelops import relabel_sequential as fl_relabel
@@ -202,7 +203,7 @@ def main():
     print("Sparse overlap counting for integer instance masks")
     print(f"Python: {sys.version.split()[0]}")
     print(f"NumPy: {np.__version__}")
-    print(f"scikit-image: {skimage.__version__}")
+    print(f"scikit-image: {getattr(skimage, '__version__', 'unknown')}")
     if stardist is None:
         print("StarDist: not installed (skipped)")
     else:

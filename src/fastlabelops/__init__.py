@@ -1,4 +1,6 @@
 from ._api import (
+    LabelCounts,
+    OverlapCounts,
     label_counts,
     overlap_counts,
     regionprops,
@@ -7,6 +9,8 @@ from ._api import (
 )
 
 __all__ = [
+    "LabelCounts",
+    "OverlapCounts",
     "label_counts",
     "overlap_counts",
     "regionprops",

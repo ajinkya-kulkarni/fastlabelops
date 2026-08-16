@@ -1,11 +1,24 @@
 from __future__ import annotations
 
+from typing import NamedTuple
+
 import numpy as np
 
 from . import _core
 
 _SUPPORTED_DTYPES = (np.dtype(np.uint32), np.dtype(np.uint64))
 _UINT64_MAX = int(np.iinfo(np.uint64).max)
+
+
+class LabelCounts(NamedTuple):
+    ids: np.ndarray
+    counts: np.ndarray
+
+
+class OverlapCounts(NamedTuple):
+    a_ids: np.ndarray
+    b_ids: np.ndarray
+    counts: np.ndarray
 
 
 def _validate_labels(labels: np.ndarray) -> None:
@@ -38,15 +51,17 @@ def label_counts(
     labels: np.ndarray,
     *,
     include_background: bool = False,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> LabelCounts:
     """Count elements for each observed label in an integer instance mask.
 
     Label IDs are returned in ascending order. Background label 0 is excluded by
     default; set ``include_background=True`` to include it when it is present.
-    Counts are returned as ``uint64``.
+    Counts are returned as ``uint64``. When ``include_background=True`` and the
+    background count is zero, no background row is emitted.
     """
     _validate_labels(labels)
-    return _core.label_counts(np.ascontiguousarray(labels), bool(include_background))
+    ids, counts = _core.label_counts(np.ascontiguousarray(labels), bool(include_background))
+    return LabelCounts(ids, counts)
 
 
 def relabel_sequential(
@@ -97,7 +112,7 @@ def overlap_counts(
     labels_b: np.ndarray,
     *,
     include_background: bool = False,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> OverlapCounts:
     """Count sparse label-pair overlaps between two integer instance masks.
 
     Pairs are returned in deterministic first-occurrence order. By default,
@@ -110,7 +125,8 @@ def overlap_counts(
 
     a = np.ascontiguousarray(labels_a)
     b = np.ascontiguousarray(labels_b)
-    return _core.overlap_counts(a, b, bool(include_background))
+    a_ids, b_ids, counts = _core.overlap_counts(a, b, bool(include_background))
+    return OverlapCounts(a_ids, b_ids, counts)
 
 
 def regionprops(labels: np.ndarray) -> dict[str, np.ndarray]:

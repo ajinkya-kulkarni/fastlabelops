@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import Any
+
 import numpy as np
 from _benchmark_utils import best, check_equal, format_time, make_mask, wrap
 
@@ -6,7 +10,7 @@ from fastlabelops import label_counts
 try:
     import fastremap
 except ImportError:
-    fastremap = None
+    fastremap: Any | None = None  # type: ignore[no-redef]
 
 BINCOUNT_MAX_LABEL = 10_000_000
 

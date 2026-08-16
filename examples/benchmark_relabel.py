@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import sys
 import time
+from typing import Any
 
 import numpy as np
 
 try:
     import fastremap
 except ImportError:
-    fastremap = None
+    fastremap: Any | None = None  # type: ignore[no-redef]
 from numpy.random import default_rng
 from skimage.segmentation import relabel_sequential as sk_relabel
 

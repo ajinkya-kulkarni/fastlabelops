@@ -59,6 +59,7 @@ Counts elements for each observed label ID. IDs are returned in ascending order 
 - arbitrary NumPy dimensionality
 - accepts non-contiguous inputs
 - memory scales with the number of observed labels, not `max(label)`
+- with `include_background=True`, the background row is emitted only when its count is nonzero
 
 ## `relabel_sequential`
 
@@ -128,30 +129,39 @@ Rows are sorted by ascending label. Bounding boxes use
 `fastlabelops` is CPU-only. On supported x86 CPUs, `uint32` workloads automatically use AVX2 run
 scanning where it helps; lightweight input sampling selects between SIMD and fallback paths.
 
-Representative gains from the current AVX2 implementation versus the previous implementation on
-segmentation-style workloads:
+Representative speedups versus common reference implementations on 2048²–4096² instance masks:
 
-| Operation | Typical improvement |
-|---|---:|
-| `label_counts` | **1.6–1.7×** |
-| `relabel_sequential` | **1.5–2.2×** |
-| `remove_small_objects` | **1.2–1.5×** |
-| `regionprops` | **1.1–1.2×** |
-| `overlap_counts` | **1.2–2.0×** |
+| Operation | vs scikit-image | vs NumPy | vs fastremap |
+|---|---:|---:|---:|
+| `label_counts` | — | **9–16×** | **4–7×** |
+| `relabel_sequential` | **6–9×** | — | **1.1–1.3×** |
+| `remove_small_objects` | **4.5–5×** | — | — |
+| `overlap_counts` | **38–55×** | **26–33×** | — |
+| `regionprops` | **95–97×** | — | — |
 
-On a 2048² mask derived from an immunohistochemistry image, measured gains were **1.64×** for
-`label_counts`, **1.53×** for relabeling, **1.22×** for `regionprops`, **1.70×** for foreground
-`overlap_counts`, and **1.16×** for full-contingency overlap. A fragmented sparse prediction case
-reached about **2.18×** for foreground overlap.
+`overlap_counts` and `regionprops` show the largest gains because the reference implementations
+size internal structures by `max(label) + 1`, which is prohibitively expensive for gappy or
+sparse IDs. `fastlabelops` sizes by *observed* labels, so sparse IDs cost the same as compact ones.
+scikit-image's `remove_small_objects` and `regionprops` raise `MemoryError` on sparse uint64 IDs
+where `max(label)` exceeds available memory.
 
-Run the dependency-free benchmark matrix with:
+Run the comparison benchmarks (requires `scikit-image`, `scipy`, and `fastremap`):
+
+```bash
+uv sync --dev
+uv run examples/benchmark_label_counts.py
+uv run examples/benchmark_relabel.py
+uv run examples/benchmark_remove_small_objects.py
+uv run examples/benchmark_overlap.py
+uv run examples/benchmark_regionprops.py
+```
+
+The dependency-free benchmark matrix is also available:
 
 ```bash
 uv run examples/benchmark_matrix.py
 ```
 
-Additional comparison scripts are available in `examples/` for label counting, relabeling,
-small-object removal, overlap counting, and region properties.
 
 ## Development
 
