@@ -8,25 +8,16 @@ void accumulate_counts(
     std::vector<Label>* observed_labels = nullptr,
     uint64_t* background_count = nullptr
 ) {
-    for (std::size_t i = 0; i < n;) {
-        const Label label = data[i];
-        std::size_t run_end = i + 1;
-        while (run_end < n && data[run_end] == label) ++run_end;
-        const uint64_t run_length = static_cast<uint64_t>(run_end - i);
-
+    runs_impl::for_each_run(data, n, [&](Label label, std::size_t start, std::size_t end) {
+        const uint64_t run_length = static_cast<uint64_t>(end - start);
         if (label == Label{0}) {
-            if (background_count != nullptr) {
-                *background_count += run_length;
-            }
-        } else {
-            auto [count, inserted] = counts.get_or_insert(label, uint64_t{0});
-            if (inserted && observed_labels != nullptr) {
-                observed_labels->push_back(label);
-            }
-            *count += run_length;
+            if (background_count != nullptr) *background_count += run_length;
+            return;
         }
-        i = run_end;
-    }
+        auto [count, inserted] = counts.get_or_insert(label, uint64_t{0});
+        if (inserted && observed_labels != nullptr) observed_labels->push_back(label);
+        *count += run_length;
+    });
 }
 
 template <typename Label>

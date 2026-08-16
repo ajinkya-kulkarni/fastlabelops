@@ -13,6 +13,7 @@
 
 // Implementation fragments are included once, in dependency order.
 #include "_label_map.inc"
+#include "_runs.inc"
 #include "_counts.inc"
 #include "_relabel.inc"
 #include "_remove_small.inc"

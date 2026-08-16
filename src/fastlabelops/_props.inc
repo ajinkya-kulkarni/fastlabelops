@@ -27,15 +27,15 @@ void scan_labels(
 
     for (npy_intp row = 0; row < height; ++row) {
         const Label* row_data = data + row * width;
-        for (npy_intp col = 0; col < width;) {
-            const Label label = row_data[col];
-            npy_intp run_end = col + 1;
-            while (run_end < width && row_data[run_end] == label) ++run_end;
+        runs_impl::for_each_run(
+            row_data,
+            static_cast<std::size_t>(width),
+            [&](Label label, std::size_t start, std::size_t end) {
+                if (label == Label{0}) return;
 
-            if (label != Label{0}) {
-                const uint64_t n = static_cast<uint64_t>(run_end - col);
-                const int64_t col_start = static_cast<int64_t>(col);
-                const int64_t col_end = static_cast<int64_t>(run_end);
+                const uint64_t n = static_cast<uint64_t>(end - start);
+                const int64_t col_start = static_cast<int64_t>(start);
+                const int64_t col_end = static_cast<int64_t>(end);
                 const int64_t row_i = static_cast<int64_t>(row);
                 const long double sum_col =
                     (static_cast<long double>(col_start) +
@@ -64,8 +64,7 @@ void scan_labels(
                     region.sum_col += sum_col;
                 }
             }
-            col = run_end;
-        }
+        );
     }
     const auto ordered_by_label = [](const auto& a, const auto& b) { return a.label < b.label; };
     if (!std::is_sorted(regions.begin(), regions.end(), ordered_by_label)) {
