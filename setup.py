@@ -11,6 +11,7 @@ else:
 _CORE_INC = [
     "src/fastlabelops/_bindings.inc",
     "src/fastlabelops/_label_map.inc",
+    "src/fastlabelops/_runs.inc",
     "src/fastlabelops/_counts.inc",
     "src/fastlabelops/_relabel.inc",
     "src/fastlabelops/_remove_small.inc",

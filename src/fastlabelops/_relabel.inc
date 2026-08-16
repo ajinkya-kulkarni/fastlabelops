@@ -1,7 +1,7 @@
 namespace relabel_impl {
 
 template <typename Label, bool CheckOverflow>
-bool relabel_kernel(Label* data, std::size_t n, uint64_t offset, std::size_t& count) {
+bool relabel_elementwise(Label* data, std::size_t n, uint64_t offset, std::size_t& count) {
     const uint64_t max_label = static_cast<uint64_t>(std::numeric_limits<Label>::max());
     label_map_impl::LabelMap<Label, Label> map(
         std::min(n, label_map_impl::kInitialReserveLimit)
@@ -48,14 +48,44 @@ bool relabel_kernel(Label* data, std::size_t n, uint64_t offset, std::size_t& co
 }
 
 template <typename Label>
+bool relabel_runs(Label* data, std::size_t n, uint64_t offset, std::size_t& count) {
+    label_map_impl::LabelMap<Label, Label> map(
+        std::min(n, label_map_impl::kInitialReserveLimit)
+    );
+    uint64_t next = offset;
+    count = 0;
+
+    runs_impl::for_each_run(
+        data,
+        n,
+        [&](Label old, std::size_t start, std::size_t end) {
+            if (old == Label{0}) return;
+            const Label candidate = static_cast<Label>(next + 1);
+            auto [mapped_ptr, inserted] = map.get_or_insert(old, candidate);
+            const Label mapped = *mapped_ptr;
+            if (inserted) {
+                ++next;
+                ++count;
+            }
+            std::fill(data + start, data + end, mapped);
+        }
+    );
+    return true;
+}
+
+template <typename Label>
 bool dispatch_relabel(Label* data, std::size_t n, uint64_t offset, std::size_t& count) {
     const uint64_t max_label = static_cast<uint64_t>(std::numeric_limits<Label>::max());
     if (offset > max_label) return false;
     const uint64_t n64 = static_cast<uint64_t>(n);
-    if (n64 <= max_label - offset) {
-        return relabel_kernel<Label, false>(data, n, offset, count);
+    if (n64 > max_label - offset) {
+        return relabel_elementwise<Label, true>(data, n, offset, count);
     }
-    return relabel_kernel<Label, true>(data, n, offset, count);
+    // Run callbacks lose their advantage when almost every pixel is a new run.
+    if (runs_impl::runs_are_dense(data, n)) {
+        return relabel_elementwise<Label, false>(data, n, offset, count);
+    }
+    return relabel_runs(data, n, offset, count);
 }
 
 PyObject* py_relabel_inplace(PyObject*, PyObject* args) {

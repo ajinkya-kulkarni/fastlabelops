@@ -25,19 +25,17 @@ void remove_small_kernel(Label* data, std::size_t n, uint64_t max_size) {
         return;
     }
 
-    for (std::size_t i = 0; i < n;) {
-        const Label label = data[i];
-        std::size_t run_end = i + 1;
-        while (run_end < n && data[run_end] == label) ++run_end;
-
-        if (label != Label{0}) {
+    runs_impl::for_each_run(
+        data,
+        n,
+        [&](Label label, std::size_t start, std::size_t end) {
+            if (label == Label{0}) return;
             const uint64_t* count = counts.find(label);
             if (count != nullptr && *count <= max_size) {
-                std::fill(data + i, data + run_end, Label{0});
+                std::fill(data + start, data + end, Label{0});
             }
         }
-        i = run_end;
-    }
+    );
 }
 
 PyObject* py_remove_small_objects_inplace(PyObject*, PyObject* args) {

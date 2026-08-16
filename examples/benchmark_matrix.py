@@ -101,6 +101,7 @@ def _build_benchmarks() -> list[Benchmark]:
     )
     high_cardinality = _repeated_labels((1024, 1024), 50_000, dtype=np.uint32)
     segmentation, _ = make_mask(2048)
+    shifted_segmentation = np.roll(segmentation, 5, axis=1)
     background = np.zeros((2048, 2048), dtype=np.uint32)
     strided = segmentation[:, ::2]
 
@@ -146,6 +147,15 @@ def _build_benchmarks() -> list[Benchmark]:
                 ),
             ]
         )
+
+    benchmarks.append(
+        _pair_benchmark(
+            "overlap_counts/foreground/segmentation-shifted",
+            segmentation,
+            shifted_segmentation,
+            lambda a, b: overlap_counts(a, b),
+        )
+    )
 
     for case_name, labels in [
         ("blocky-compact", blocky),

@@ -117,25 +117,23 @@ void count_pairs(
     out_b.reserve(reserve_n);
     out_counts.reserve(reserve_n);
 
-    for (std::size_t i = 0; i < n;) {
-        const LabelA av = a[i];
-        const LabelB bv = b[i];
-        std::size_t run_end = i + 1;
-        while (run_end < n && a[run_end] == av && b[run_end] == bv) ++run_end;
-        const uint64_t run_length = static_cast<uint64_t>(run_end - i);
-
-        if (include_background || (av != LabelA{0} && bv != LabelB{0})) {
-            const std::size_t candidate = out_counts.size();
-            std::size_t index = 0;
-            if (map.get_or_insert(av, bv, candidate, index)) {
-                out_a.push_back(av);
-                out_b.push_back(bv);
-                out_counts.push_back(run_length);
-            } else {
-                out_counts[index] += run_length;
-            }
+    const auto emit = [&](LabelA av, LabelB bv, std::size_t start, std::size_t end) {
+        const uint64_t run_length = static_cast<uint64_t>(end - start);
+        const std::size_t candidate = out_counts.size();
+        std::size_t index = 0;
+        if (map.get_or_insert(av, bv, candidate, index)) {
+            out_a.push_back(av);
+            out_b.push_back(bv);
+            out_counts.push_back(run_length);
+        } else {
+            out_counts[index] += run_length;
         }
-        i = run_end;
+    };
+
+    if (include_background) {
+        runs_impl::for_each_pair_run(a, b, n, emit);
+    } else {
+        runs_impl::for_each_foreground_pair_run(a, b, n, emit);
     }
 }
 
