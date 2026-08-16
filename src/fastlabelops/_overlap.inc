@@ -101,6 +101,16 @@ private:
     std::size_t grow_at_ = 0;
 };
 
+// Most instance labels overlap only a few labels in the other mask. Keep the
+// first two B-label mappings directly in the A-label row; uncommon higher-
+// degree rows spill into the existing global PairMap.
+template <typename LabelB>
+struct TinyRow {
+    LabelB labels[2] = {LabelB{0}, LabelB{0}};
+    std::size_t indices[2] = {0, 0};
+    std::size_t size = 0;
+};
+
 template <typename LabelA, typename LabelB>
 void count_pairs(
     const LabelA* a,
@@ -111,8 +121,13 @@ void count_pairs(
     std::vector<LabelB>& out_b,
     std::vector<uint64_t>& out_counts
 ) {
-    PairMap<LabelA, LabelB> map(n);
     const std::size_t reserve_n = std::min(n, label_map_impl::kInitialReserveLimit);
+    label_map_impl::LabelMap<LabelA, std::size_t> row_index(reserve_n);
+    std::vector<TinyRow<LabelB>> rows;
+    rows.reserve(reserve_n);
+    TinyRow<LabelB> background_row;
+    PairMap<LabelA, LabelB> overflow(64);
+
     out_a.reserve(reserve_n);
     out_b.reserve(reserve_n);
     out_counts.reserve(reserve_n);
@@ -125,14 +140,44 @@ void count_pairs(
         const uint64_t run_length = static_cast<uint64_t>(run_end - i);
 
         if (include_background || (av != LabelA{0} && bv != LabelB{0})) {
-            const std::size_t candidate = out_counts.size();
-            std::size_t index = 0;
-            if (map.get_or_insert(av, bv, candidate, index)) {
-                out_a.push_back(av);
-                out_b.push_back(bv);
-                out_counts.push_back(run_length);
+            TinyRow<LabelB>* row = nullptr;
+            if (av == LabelA{0}) {
+                row = &background_row;
             } else {
-                out_counts[index] += run_length;
+                auto [row_ptr, inserted] = row_index.get_or_insert(av, rows.size());
+                if (inserted) rows.emplace_back();
+                row = &rows[*row_ptr];
+            }
+
+            bool found = false;
+            for (std::size_t j = 0; j < row->size; ++j) {
+                if (row->labels[j] == bv) {
+                    out_counts[row->indices[j]] += run_length;
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found) {
+                if (row->size < 2) {
+                    const std::size_t index = out_counts.size();
+                    row->labels[row->size] = bv;
+                    row->indices[row->size] = index;
+                    ++row->size;
+                    out_a.push_back(av);
+                    out_b.push_back(bv);
+                    out_counts.push_back(run_length);
+                } else {
+                    const std::size_t candidate = out_counts.size();
+                    std::size_t index = 0;
+                    if (overflow.get_or_insert(av, bv, candidate, index)) {
+                        out_a.push_back(av);
+                        out_b.push_back(bv);
+                        out_counts.push_back(run_length);
+                    } else {
+                        out_counts[index] += run_length;
+                    }
+                }
             }
         }
         i = run_end;
