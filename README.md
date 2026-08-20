@@ -14,8 +14,10 @@ labeled images:
 The package is deliberately low-level: NumPy arrays in, NumPy arrays out, one compiled C++
 extension, no scikit-image dependency at runtime.
 
+## Installation
+
 ```bash
-python -m pip install .
+pip install fastlabelops
 ```
 
 ```python
@@ -142,8 +144,8 @@ Representative speedups versus common reference implementations on 2048²–4096
 `overlap_counts` and `regionprops` show the largest gains because the reference implementations
 size internal structures by `max(label) + 1`, which is prohibitively expensive for gappy or
 sparse IDs. `fastlabelops` sizes by *observed* labels, so sparse IDs cost the same as compact ones.
-scikit-image's `remove_small_objects` and `regionprops` raise `MemoryError` on sparse uint64 IDs
-where `max(label)` exceeds available memory.
+In the benchmarked sparse `uint64` cases, scikit-image's `remove_small_objects` and `regionprops`
+raised `MemoryError` when `max(label)` exceeded available memory.
 
 Run the comparison benchmarks (requires `scikit-image`, `scipy`, and `fastremap`):
 
@@ -161,7 +163,6 @@ The dependency-free benchmark matrix is also available:
 ```bash
 uv run examples/benchmark_matrix.py
 ```
-
 
 ## Development
 
