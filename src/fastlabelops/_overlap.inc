@@ -3,6 +3,16 @@ namespace overlap_impl {
 constexpr uint64_t kSecondLabelHashSalt = 0xd6e8feb86659fd93ULL;
 constexpr unsigned kPairHashRotation = 29;
 
+// The radix path is only worthwhile when pair runs are both short and mostly
+// unique. A tiny prefix sample keeps normal segmentation masks on PairMap.
+constexpr std::size_t kRadixMinInputSize = 1u << 18;
+constexpr std::size_t kRadixQuickSamplePixels = 64;
+constexpr std::size_t kRadixSamplePixels = 1024;
+constexpr unsigned kRadixBits = 16;
+constexpr std::size_t kRadixBuckets = 1u << kRadixBits;
+constexpr std::size_t kRadixMinRunDensityDenominator = 4;
+constexpr std::size_t kRadixMinUniquePercent = 95;
+
 // SplitMix64 mixing function.
 inline uint64_t mix64(uint64_t x) noexcept {
     x += 0x9e3779b97f4a7c15ULL;
@@ -102,7 +112,7 @@ private:
 };
 
 template <typename LabelA, typename LabelB>
-void count_pairs(
+void count_pairs_hash(
     const LabelA* a,
     const LabelB* b,
     std::size_t n,
@@ -135,6 +145,188 @@ void count_pairs(
     } else {
         runs_impl::for_each_foreground_pair_run(a, b, n, emit);
     }
+}
+
+struct RadixRun {
+    uint64_t key = 0;
+    uint32_t count = 0;
+    uint32_t first_run = 0;
+};
+
+inline uint64_t pack_pair(uint32_t a, uint32_t b) noexcept {
+    return (static_cast<uint64_t>(a) << 32) | static_cast<uint64_t>(b);
+}
+
+bool should_use_radix(
+    const uint32_t* a,
+    const uint32_t* b,
+    std::size_t n,
+    bool include_background
+) {
+    if (n < kRadixMinInputSize ||
+        n >= static_cast<std::size_t>(std::numeric_limits<uint32_t>::max())) {
+        return false;
+    }
+
+    const std::size_t quick_limit = std::min(n, kRadixQuickSamplePixels);
+    std::size_t quick_runs = 0;
+    for (std::size_t i = 0; i < quick_limit;) {
+        const uint32_t av = a[i];
+        const uint32_t bv = b[i];
+        std::size_t run_end = i + 1;
+        while (run_end < quick_limit && a[run_end] == av && b[run_end] == bv) ++run_end;
+        if (include_background || (av != 0 && bv != 0)) ++quick_runs;
+        i = run_end;
+    }
+    if (quick_runs * kRadixMinRunDensityDenominator < quick_limit) return false;
+
+    const std::size_t limit = std::min(n, kRadixSamplePixels);
+    std::size_t eligible_runs = 0;
+    for (std::size_t i = 0; i < limit;) {
+        const uint32_t av = a[i];
+        const uint32_t bv = b[i];
+        std::size_t run_end = i + 1;
+        while (run_end < limit && a[run_end] == av && b[run_end] == bv) ++run_end;
+        if (include_background || (av != 0 && bv != 0)) ++eligible_runs;
+        i = run_end;
+    }
+
+    if (eligible_runs * kRadixMinRunDensityDenominator < limit) return false;
+
+    std::vector<uint64_t> keys;
+    keys.reserve(eligible_runs);
+    for (std::size_t i = 0; i < limit;) {
+        const uint32_t av = a[i];
+        const uint32_t bv = b[i];
+        std::size_t run_end = i + 1;
+        while (run_end < limit && a[run_end] == av && b[run_end] == bv) ++run_end;
+        if (include_background || (av != 0 && bv != 0)) {
+            keys.push_back(pack_pair(av, bv));
+        }
+        i = run_end;
+    }
+
+    std::sort(keys.begin(), keys.end());
+    std::size_t unique = keys.empty() ? 0 : 1;
+    for (std::size_t i = 1; i < keys.size(); ++i) {
+        unique += keys[i] != keys[i - 1];
+    }
+    return unique * 100 >= keys.size() * kRadixMinUniquePercent;
+}
+
+void radix_sort_runs(std::vector<RadixRun>& runs) {
+    if (runs.size() < 2) return;
+
+    std::vector<RadixRun> tmp(runs.size());
+    std::vector<std::size_t> offsets(kRadixBuckets);
+    constexpr uint64_t mask = kRadixBuckets - 1;
+
+    for (unsigned shift = 0; shift < 64; shift += kRadixBits) {
+        std::fill(offsets.begin(), offsets.end(), std::size_t{0});
+        for (const RadixRun& run : runs) {
+            ++offsets[(run.key >> shift) & mask];
+        }
+
+        std::size_t sum = 0;
+        for (std::size_t i = 0; i < offsets.size(); ++i) {
+            const std::size_t count = offsets[i];
+            offsets[i] = sum;
+            sum += count;
+        }
+        for (const RadixRun& run : runs) {
+            tmp[offsets[(run.key >> shift) & mask]++] = run;
+        }
+        runs.swap(tmp);
+    }
+}
+
+void count_pairs_radix(
+    const uint32_t* a,
+    const uint32_t* b,
+    std::size_t n,
+    bool include_background,
+    std::vector<uint32_t>& out_a,
+    std::vector<uint32_t>& out_b,
+    std::vector<uint64_t>& out_counts
+) {
+    std::vector<RadixRun> runs;
+    runs.reserve(std::min(n, label_map_impl::kInitialReserveLimit));
+
+    uint32_t ordinal = 0;
+    for (std::size_t i = 0; i < n;) {
+        const uint32_t av = a[i];
+        const uint32_t bv = b[i];
+        std::size_t run_end = i + 1;
+        while (run_end < n && a[run_end] == av && b[run_end] == bv) ++run_end;
+
+        if (include_background || (av != 0 && bv != 0)) {
+            runs.push_back(
+                {pack_pair(av, bv), static_cast<uint32_t>(run_end - i), ordinal++}
+            );
+        }
+        i = run_end;
+    }
+
+    radix_sort_runs(runs);
+
+    std::size_t unique_count = 0;
+    for (std::size_t i = 0; i < runs.size();) {
+        const uint64_t key = runs[i].key;
+        uint64_t total = runs[i].count;
+        uint32_t first_run = runs[i].first_run;
+        std::size_t j = i + 1;
+        while (j < runs.size() && runs[j].key == key) {
+            total += runs[j].count;
+            first_run = std::min(first_run, runs[j].first_run);
+            ++j;
+        }
+        runs[unique_count++] = {
+            key,
+            static_cast<uint32_t>(total),
+            first_run,
+        };
+        i = j;
+    }
+    runs.resize(unique_count);
+
+    // Radix sorting groups equal pairs but changes their order. Scatter each
+    // reduced pair back to the ordinal of its first observed run so the public
+    // first-occurrence ordering contract is preserved.
+    const uint32_t missing = std::numeric_limits<uint32_t>::max();
+    std::vector<uint32_t> order(ordinal, missing);
+    for (uint32_t i = 0; i < runs.size(); ++i) {
+        order[runs[i].first_run] = i;
+    }
+
+    out_a.reserve(runs.size());
+    out_b.reserve(runs.size());
+    out_counts.reserve(runs.size());
+    for (uint32_t index : order) {
+        if (index == missing) continue;
+        const RadixRun& run = runs[index];
+        out_a.push_back(static_cast<uint32_t>(run.key >> 32));
+        out_b.push_back(static_cast<uint32_t>(run.key));
+        out_counts.push_back(run.count);
+    }
+}
+
+template <typename LabelA, typename LabelB>
+void count_pairs(
+    const LabelA* a,
+    const LabelB* b,
+    std::size_t n,
+    bool include_background,
+    std::vector<LabelA>& out_a,
+    std::vector<LabelB>& out_b,
+    std::vector<uint64_t>& out_counts
+) {
+    if constexpr (std::is_same_v<LabelA, uint32_t> && std::is_same_v<LabelB, uint32_t>) {
+        if (should_use_radix(a, b, n, include_background)) {
+            count_pairs_radix(a, b, n, include_background, out_a, out_b, out_counts);
+            return;
+        }
+    }
+    count_pairs_hash(a, b, n, include_background, out_a, out_b, out_counts);
 }
 
 template <typename LabelA, typename LabelB>
